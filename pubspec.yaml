@@ -13,7 +13,7 @@ topics:
   - native
   - widget
 screenshots:
-  - description: A macOS 27 window with native Liquid Glass panels and AppKit controls.
+  - description: Native AppKit controls in light and dark mode on macOS 27.
     path: assets/native_macos-showcase.png
 
 environment:

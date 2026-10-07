@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">native_macos logo</title>
+  <desc id="desc">A blue rounded square containing a cream Mac window with three title bar dots, a switch that is on, and a capsule button.</desc>
+
+  <rect x="12" y="12" width="488" height="488" rx="126" fill="#0A84FF"/>
+
+  <!-- Window -->
+  <rect x="88" y="112" width="336" height="288" rx="36" fill="#FFF9F3" stroke="#173A73" stroke-width="10"/>
+  <path d="M88 180h336" fill="none" stroke="#173A73" stroke-width="10"/>
+
+  <!-- Title bar dots -->
+  <g stroke="#173A73" stroke-width="6">
+    <circle cx="132" cy="146" r="13" fill="#FF5F57"/>
+    <circle cx="172" cy="146" r="13" fill="#FEBC2E"/>
+    <circle cx="212" cy="146" r="13" fill="#28C840"/>
+  </g>
+
+  <!-- Switch, on -->
+  <rect x="140" y="222" width="132" height="68" rx="34" fill="#0A84FF" stroke="#173A73" stroke-width="10"/>
+  <circle cx="238" cy="256" r="24" fill="#FFF9F3" stroke="#173A73" stroke-width="8"/>
+
+  <!-- Capsule button -->
+  <rect x="140" y="322" width="232" height="44" rx="22" fill="#FFF9F3" stroke="#173A73" stroke-width="10"/>
+  <path d="M206 344h100" fill="none" stroke="#173A73" stroke-width="12" stroke-linecap="round"/>
+</svg>

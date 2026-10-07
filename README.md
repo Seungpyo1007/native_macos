@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Seungpyo1007/native_macos/main/assets/native_macos-logo.png" alt="native_macos logo: a Mac window with three title bar dots, a switch that is on, and a capsule button" width="128">
+</p>
+
 <h1 align="center">native_macos</h1>
 
 <p align="center">
@@ -35,7 +39,7 @@ NativeGlassContainer(
 ```
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Seungpyo1007/native_macos/main/assets/native_macos-showcase.png" alt="A macOS 27 window with Liquid Glass panels over colored circles, holding native buttons, a switch, a checkbox, a segmented control, a pop-up button, and a slider" width="640">
+  <img src="https://raw.githubusercontent.com/Seungpyo1007/native_macos/main/assets/native_macos-showcase.png" alt="The example app in light and dark mode on macOS 27: native push, primary, glass, and destructive buttons, a switch, a checkbox, a segmented control, a pop-up button, a slider, progress indicators, and a small glass panel" width="720">
 </p>
 
 ## Platform support

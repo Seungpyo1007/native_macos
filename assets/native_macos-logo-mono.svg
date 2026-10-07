@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">native_macos monochrome logo</title>
+  <desc id="desc">A single-color outlined Mac window with three title bar dots, a switch that is on, and a capsule button.</desc>
+
+  <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="88" y="112" width="336" height="288" rx="36" stroke-width="18"/>
+    <path d="M88 180h336" stroke-width="14"/>
+    <rect x="140" y="222" width="132" height="68" rx="34" stroke-width="14"/>
+    <rect x="140" y="322" width="232" height="44" rx="22" stroke-width="14"/>
+    <path d="M206 344h100" stroke-width="14"/>
+  </g>
+  <g fill="currentColor">
+    <circle cx="132" cy="146" r="13"/>
+    <circle cx="172" cy="146" r="13"/>
+    <circle cx="212" cy="146" r="13"/>
+    <circle cx="238" cy="256" r="20"/>
+  </g>
+</svg>

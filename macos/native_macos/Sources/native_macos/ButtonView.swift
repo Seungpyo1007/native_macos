@@ -4,6 +4,9 @@ import Cocoa
 final class ButtonView: NSView, NativeControl {
   var emit: ((String, Any?) -> Void)?
   private let button = NSButton(title: "", target: nil, action: nil)
+  /// Room around the button for bezels that draw past their frame, such as
+  /// the glass bezel's edge highlight.
+  private var inset: CGFloat = 0
 
   override init(frame: NSRect) {
     super.init(frame: frame)
@@ -29,22 +32,36 @@ final class ButtonView: NSView, NativeControl {
 
     let style = p["style"] as? String
     button.isBordered = style != "borderless"
+    inset = 0
     button.bezelStyle = .push
     if style == "automatic", #available(macOS 14.0, *) { button.bezelStyle = .automatic }
     #if compiler(>=6.2)
       if #available(macOS 26.0, *) {
-        if style == "glass" { button.bezelStyle = .glass }
+        if style == "glass" {
+          button.bezelStyle = .glass
+          inset = 3
+        }
         button.tintProminence = decodeProminence(p["prominence"])
         button.borderShape = decodeBorderShape(p["borderShape"])
       }
     #endif
+
+    needsLayout = true
 
     let tint = decodeColor(p["tint"])
     button.contentTintColor = style == "borderless" ? tint : nil
     button.bezelColor = style == "borderless" ? nil : tint
   }
 
-  func fittingSizeForFlutter() -> NSSize { button.fittingSize }
+  func fittingSizeForFlutter() -> NSSize {
+    let size = button.fittingSize
+    return NSSize(width: size.width + inset * 2, height: size.height + inset * 2)
+  }
+
+  override func layout() {
+    super.layout()
+    button.frame = bounds.insetBy(dx: inset, dy: inset)
+  }
 }
 
 /// An `NSButton` checkbox.
