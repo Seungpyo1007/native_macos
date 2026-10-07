@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test (Flutter ${{ matrix.label }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Lowest supported release from pubspec.yaml, plus the current stable.
+        # An empty version makes flutter-action pick the latest stable.
+        include:
+          - label: '3.47.0'
+            version: '3.47.0'
+          - label: stable
+            version: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ matrix.version }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - if: matrix.label == 'stable'
+        run: dart format --output=none --set-exit-if-changed .
+      - run: flutter analyze --fatal-infos
+      - run: flutter test
+
+  package:
+    name: Package score
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter pub publish --dry-run
+      # pana validates screenshots with webpinfo, cwebp, and gif2webp.
+      - run: sudo apt-get update && sudo apt-get install -y webp
+      - run: dart pub global activate pana
+      - run: dart pub global run pana --no-warning --exit-code-threshold 0 .
+
+  macos:
+    name: macOS example (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # macos-15 ships an Xcode without the macOS 26 SDK, which proves the
+        # compiler guards around the glass APIs; macos-latest builds them.
+        runner: [macos-15, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: xcodebuild -version
+      - working-directory: example
+        run: flutter build macos --debug
+      # Swift unit tests for every control, without a Flutter engine.
+      - working-directory: example/macos
+        run: xcodebuild test -workspace Runner.xcworkspace -scheme Runner -destination 'platform=macOS'
