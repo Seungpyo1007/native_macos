@@ -1,8 +1,8 @@
 name: native_macos
 description: >-
-  Real AppKit controls and Liquid Glass for Flutter on macOS: glass surfaces,
-  buttons, switches, sliders, and menus drawn by the OS, not imitations.
-version: 0.1.0
+  Real AppKit controls and Liquid Glass for Flutter on macOS: a native
+  toolbar, glass surfaces, buttons, switches, sliders, and menus drawn by the OS.
+version: 0.2.0
 homepage: https://seungpyo.online
 repository: https://github.com/Seungpyo1007/native_macos
 issue_tracker: https://github.com/Seungpyo1007/native_macos/issues
@@ -13,7 +13,7 @@ topics:
   - native
   - widget
 screenshots:
-  - description: Native AppKit controls in light and dark mode on macOS 27.
+  - description: A native NSToolbar and AppKit controls in light and dark mode on macOS 27.
     path: assets/native_macos-showcase.png
 
 environment:

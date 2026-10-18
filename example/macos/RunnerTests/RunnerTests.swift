@@ -141,4 +141,83 @@ final class RunnerTests: XCTestCase {
     XCTAssertEqual(color.alphaComponent, 128.0 / 255, accuracy: 0.001)
     XCTAssertNil(decodeColor(nil))
   }
+
+  // MARK: Toolbar
+
+  private func makeToolbar() -> (ToolbarController, NSWindow, () -> [(String, String, Any?)]) {
+    var events: [(String, String, Any?)] = []
+    let controller = ToolbarController { events.append(($0, $1, $2)) }
+    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: true)
+    return (controller, window, { events })
+  }
+
+  private let toolbarSpec: [String: Any] = [
+    "title": "Mail", "style": "unifiedCompact", "showsTitle": true, "brightness": "dark",
+    "items": [
+      ["kind": "button", "id": "new", "label": "New", "symbol": "square.and.pencil", "enabled": true],
+      ["kind": "segments", "id": "view", "labels": ["A", "B"], "selectedIndex": 1, "enabled": true],
+      ["kind": "flexibleSpace"],
+      ["kind": "menu", "id": "sort", "label": "Sort", "enabled": true,
+       "items": [["title": "Name", "enabled": true], ["divider": true], ["title": "Date", "enabled": true]]],
+      ["kind": "search", "id": "search", "placeholder": "Find"],
+    ],
+  ]
+
+  func testToolbarBuildsItemsOnTheWindow() {
+    let (controller, window, _) = makeToolbar()
+    controller.set(toolbarSpec, window: window)
+    let toolbar = window.toolbar!
+    XCTAssertTrue(toolbar === controller.toolbar)
+    XCTAssertEqual(window.title, "Mail")
+    XCTAssertEqual(window.toolbarStyle, .unifiedCompact)
+    XCTAssertEqual(window.appearance?.name, .darkAqua)
+    XCTAssertEqual(toolbar.items.count, 5)
+    XCTAssertEqual(toolbar.items[2].itemIdentifier, .flexibleSpace)
+    XCTAssertEqual((toolbar.items[1] as? NSToolbarItemGroup)?.selectedIndex, 1)
+    XCTAssertEqual((toolbar.items[3] as? NSMenuToolbarItem)?.menu.items.count, 3)
+    XCTAssertEqual((toolbar.items[4] as? NSSearchToolbarItem)?.searchField.placeholderString, "Find")
+  }
+
+  func testToolbarReportsEvents() {
+    let (controller, window, events) = makeToolbar()
+    controller.set(toolbarSpec, window: window)
+    let items = window.toolbar!.items
+    controller.buttonPressed(items[0])
+    let group = items[1] as! NSToolbarItemGroup
+    group.selectedIndex = 0
+    controller.segmentChanged(group)
+    let date = (items[3] as! NSMenuToolbarItem).menu.items[2]
+    controller.menuSelected(date)
+    let field = (items[4] as! NSSearchToolbarItem).searchField
+    field.stringValue = "hi"
+    controller.searchSubmitted(field)
+    XCTAssertEqual(events().map(\.0), ["new", "view", "sort", "search"])
+    XCTAssertEqual(events().map(\.1), ["pressed", "changed", "selected", "submitted"])
+    XCTAssertEqual(events()[2].2 as? Int, 2)
+    XCTAssertEqual(events()[3].2 as? String, "hi")
+  }
+
+  func testToolbarUpdatesInPlaceAndRebuildsOnStructureChange() {
+    let (controller, window, _) = makeToolbar()
+    controller.set(toolbarSpec, window: window)
+    let first = window.toolbar!.items[0]
+    var spec = toolbarSpec
+    var items = spec["items"] as! [[String: Any]]
+    items[0]["label"] = "Compose"
+    items[0]["enabled"] = false
+    spec["items"] = items
+    controller.set(spec, window: window)
+    XCTAssertTrue(window.toolbar!.items[0] === first)
+    XCTAssertEqual(first.label, "Compose")
+    XCTAssertFalse(first.isEnabled)
+
+    items.removeLast()
+    spec["items"] = items
+    controller.set(spec, window: window)
+    XCTAssertEqual(window.toolbar!.items.count, 4)
+
+    controller.clear(window: window)
+    XCTAssertNil(window.toolbar)
+    XCTAssertNil(window.appearance)
+  }
 }

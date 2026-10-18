@@ -59,10 +59,59 @@ class _ControlsPageState extends State<ControlsPage> {
 
   @override
   Widget build(BuildContext context) {
+    return NativeToolbar(
+      title: 'native_macos',
+      items: [
+        NativeToolbarSegments(
+          id: 'view',
+          labels: const ['Icons', 'List', 'Columns'],
+          symbols: const [
+            'square.grid.2x2',
+            'list.bullet',
+            'rectangle.split.3x1',
+          ],
+          selectedIndex: _view,
+          onChanged: (i) => setState(() => _view = i),
+        ),
+        const NativeToolbarSpace.flexible(),
+        NativeToolbarMenu<Sort>(
+          id: 'sort',
+          label: 'Sort',
+          symbol: 'arrow.up.arrow.down',
+          onSelected: (v) => setState(() => _sort = v),
+          items: const [
+            NativeMenuItem(title: 'Name', value: Sort.name),
+            NativeMenuItem(title: 'Date Modified', value: Sort.date),
+            NativeMenuItem(title: 'Size', value: Sort.size),
+          ],
+        ),
+        NativeToolbarButton(
+          id: 'share',
+          label: 'Share',
+          symbol: 'square.and.arrow.up',
+          onPressed: () => setState(() => _last = 'toolbar: share'),
+        ),
+        NativeToolbarButton(
+          id: 'inbox',
+          label: 'Inbox',
+          symbol: 'tray',
+          badge: _presses > 0 ? NativeToolbarBadge.count(_presses) : null,
+          onPressed: () => setState(() => _presses = 0),
+        ),
+        NativeToolbarSearch(
+          id: 'search',
+          placeholder: 'Search',
+          onSubmitted: (text) => setState(() => _last = 'search: $text'),
+        ),
+      ],
+      child: _page(context),
+    );
+  }
+
+  Widget _page(BuildContext context) {
     return Scaffold(
       body: ListView(
-        // The window has no title bar background, so leave room for its buttons.
-        padding: const EdgeInsets.fromLTRB(20, 40, 20, 20),
+        padding: const EdgeInsets.all(20),
         children: [
           _Group(
             title: 'Buttons',

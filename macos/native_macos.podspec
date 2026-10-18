@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'native_macos'
-  s.version          = '0.1.0'
+  s.version          = '0.2.0'
   s.summary          = 'Real AppKit controls and Liquid Glass for Flutter on macOS.'
   s.description      = <<-DESC
 Embeds native AppKit views (NSGlassEffectView, NSButton, NSSwitch, NSSlider and

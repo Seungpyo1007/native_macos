@@ -56,6 +56,8 @@ needs macOS 27 and Xcode 27.
 
 ## Features
 
+- `NativeToolbar`: a real `NSToolbar` in the window's title bar, with
+  buttons, segments, menus, and a search field declared in Dart.
 - `NativeGlassContainer`: an `NSGlassEffectView` sized by its child and
   painted under it.
 - `NativeButton`: `NSButton` with push, glass, or borderless bezels, tint
@@ -78,6 +80,43 @@ The package requires Dart 3.13 and Flutter 3.47 or newer. No entitlements
 are needed; everything works in the App Sandbox.
 
 ## Usage
+
+### Toolbar
+
+Wrap a page in `NativeToolbar` to put a real `NSToolbar` on the window. The
+toolbar is window chrome drawn by AppKit, not a widget in your layout, so it
+looks and behaves like the toolbar in Finder or Mail.
+
+```dart
+NativeToolbar(
+  title: 'Inbox',
+  items: [
+    NativeToolbarSegments(
+      id: 'view',
+      labels: const ['List', 'Grid'],
+      symbols: const ['list.bullet', 'square.grid.2x2'],
+      selectedIndex: view,
+      onChanged: (i) => setState(() => view = i),
+    ),
+    const NativeToolbarSpace.flexible(),
+    NativeToolbarButton(
+      id: 'compose',
+      label: 'Compose',
+      symbol: 'square.and.pencil',
+      badge: const NativeToolbarBadge.count(3),
+      onPressed: compose,
+    ),
+    NativeToolbarSearch(id: 'search', onSubmitted: search),
+  ],
+  child: page,
+)
+```
+
+Each item needs an `id` that is unique within the toolbar. A window has one
+toolbar: the newest `NativeToolbar` owns it, and the one below takes over
+when it is removed, as when a route is popped. While a toolbar is shown, the
+window follows your app's theme brightness. The search field keeps its own
+text and reports edits through `onChanged` and `onSubmitted`.
 
 ### Glass styles
 
@@ -210,7 +249,8 @@ These come from how Flutter embeds AppKit views today.
   window-sized surface. Use native views for controls and navigation, not for
   long lists.
 - Only the main Flutter view is supported; multi-window is still
-  experimental in Flutter.
+  experimental in Flutter. `NativeToolbar` replaces any toolbar you set on
+  that window yourself.
 
 ## Related packages
 

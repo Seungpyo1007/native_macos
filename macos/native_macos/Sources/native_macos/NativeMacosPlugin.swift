@@ -4,6 +4,7 @@ import FlutterMacOS
 public class NativeMacosPlugin: NSObject, FlutterPlugin {
   private weak var registrar: FlutterPluginRegistrar?
   private let menus = MenuPresenter()
+  private var toolbar: ToolbarController?
 
   public static func register(with registrar: FlutterPluginRegistrar) {
     let messenger = registrar.messenger
@@ -25,6 +26,27 @@ public class NativeMacosPlugin: NSObject, FlutterPlugin {
     instance.registrar = registrar
     let channel = FlutterMethodChannel(name: "native_macos", binaryMessenger: messenger)
     registrar.addMethodCallDelegate(instance, channel: channel)
+
+    let toolbarChannel = FlutterMethodChannel(name: "native_macos/toolbar", binaryMessenger: messenger)
+    instance.toolbar = ToolbarController(channel: toolbarChannel)
+    toolbarChannel.setMethodCallHandler { [weak instance] call, result in
+      instance?.handleToolbar(call, result: result) ?? result(nil)
+    }
+  }
+
+  private func handleToolbar(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    let window = registrar?.view?.window
+    switch call.method {
+    case "set":
+      guard let window else { return result(noWindow()) }
+      toolbar?.set(call.arguments as? [String: Any] ?? [:], window: window)
+      result(nil)
+    case "clear":
+      toolbar?.clear(window: window)
+      result(nil)
+    default:
+      result(FlutterMethodNotImplemented)
+    }
   }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {

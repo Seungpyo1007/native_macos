@@ -18,4 +18,5 @@ export 'src/native_segmented_control.dart';
 export 'src/native_slider.dart';
 export 'src/native_support.dart';
 export 'src/native_switch.dart';
+export 'src/native_toolbar.dart';
 export 'src/native_types.dart';
