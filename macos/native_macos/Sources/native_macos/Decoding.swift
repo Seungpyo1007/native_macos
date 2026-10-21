@@ -56,17 +56,40 @@ func decodeImage(_ symbol: Any?, label: String?) -> NSImage? {
   }
 #endif
 
-/// Builds `NSMenuItem`s from Dart's encoded menu entries. Each item's tag is
-/// its index in [entries].
-func makeMenuItems(_ entries: [[String: Any]], target: AnyObject?, action: Selector?) -> [NSMenuItem] {
+/// Builds `NSMenuItem`s from Dart's encoded menu entries, submenus
+/// included. Each item's tag is Dart's `tag` for it, or its index in
+/// [entries] when there is none. [represented] goes to every item's
+/// `representedObject`.
+func makeMenuItems(
+  _ entries: [[String: Any]], target: AnyObject?, action: Selector?, represented: Any? = nil
+) -> [NSMenuItem] {
   entries.enumerated().map { index, entry in
     if entry["divider"] as? Bool == true { return NSMenuItem.separator() }
     let title = entry["title"] as? String ?? ""
     let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
     item.target = target
-    item.tag = index
+    item.tag = entry["tag"] as? Int ?? index
+    item.representedObject = represented
     item.isEnabled = entry["enabled"] as? Bool ?? true
     item.image = decodeImage(entry["symbol"], label: title)
+    item.state = entry["checked"] as? Bool == true ? .on : .off
+    if let shortcut = entry["shortcut"] as? [String: Any], let key = shortcut["key"] as? String {
+      item.keyEquivalent = key
+      var mask: NSEvent.ModifierFlags = []
+      if shortcut["command"] as? Bool == true { mask.insert(.command) }
+      if shortcut["shift"] as? Bool == true { mask.insert(.shift) }
+      if shortcut["option"] as? Bool == true { mask.insert(.option) }
+      if shortcut["control"] as? Bool == true { mask.insert(.control) }
+      item.keyEquivalentModifierMask = mask
+    }
+    if let children = entry["submenu"] as? [[String: Any]] {
+      let submenu = NSMenu(title: title)
+      submenu.autoenablesItems = false
+      for child in makeMenuItems(children, target: target, action: action, represented: represented) {
+        submenu.addItem(child)
+      }
+      item.submenu = submenu
+    }
     return item
   }
 }

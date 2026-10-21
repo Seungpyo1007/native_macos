@@ -56,6 +56,21 @@ class _ControlsPageState extends State<ControlsPage> {
   Sort _sort = Sort.name;
   int _presses = 0;
   String _last = 'Nothing yet';
+  DateTime _date = DateTime(2026, 10, 22);
+  double _copies = 1;
+  Color _color = const Color(0xFF3478F6);
+  bool _details = false;
+  Set<int> _styles = {0};
+  bool _merged = true;
+  int _section = 0;
+  final _search = NativeToolbarSearchController();
+  final _shareKey = GlobalKey();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -101,10 +116,40 @@ class _ControlsPageState extends State<ControlsPage> {
         NativeToolbarSearch(
           id: 'search',
           placeholder: 'Search',
+          controller: _search,
           onSubmitted: (text) => setState(() => _last = 'search: $text'),
         ),
       ],
-      child: _page(context),
+      child: NativeSidebar(
+        resizable: true,
+        sidebar: _sidebar(context),
+        child: _page(context),
+      ),
+    );
+  }
+
+  Widget _sidebar(BuildContext context) {
+    const sections = [
+      ('Controls', Icons.tune),
+      ('Glass', Icons.blur_on),
+      ('Windows', Icons.web_asset),
+    ];
+    // The sidebar has no background of its own: the native one shows.
+    return Material(
+      type: MaterialType.transparency,
+      child: ListView(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        children: [
+          for (final (i, (title, icon)) in sections.indexed)
+            ListTile(
+              dense: true,
+              leading: Icon(icon, size: 18),
+              title: Text(title),
+              selected: _section == i,
+              onTap: () => setState(() => _section = i),
+            ),
+        ],
+      ),
     );
   }
 
@@ -218,6 +263,140 @@ class _ControlsPageState extends State<ControlsPage> {
             ],
           ),
           _Group(
+            title: 'More controls',
+            children: [
+              _Row(
+                'Date',
+                NativeDatePicker(
+                  value: _date,
+                  onChanged: (v) => setState(() => _date = v),
+                ),
+              ),
+              _Row(
+                'Copies: ${_copies.round()}',
+                NativeStepper(
+                  value: _copies,
+                  min: 1,
+                  max: 99,
+                  semanticsLabel: 'Copies',
+                  onChanged: (v) => setState(() => _copies = v),
+                ),
+              ),
+              _Row(
+                'Accent',
+                NativeColorWell(
+                  value: _color,
+                  supportsAlpha: false,
+                  onChanged: (v) => setState(() => _color = v),
+                ),
+              ),
+              _Row(
+                'Text style',
+                NativeMultiSegmentedControl(
+                  labels: const ['Bold', 'Italic', 'Underline'],
+                  symbols: const ['bold', 'italic', 'underline'],
+                  selected: _styles,
+                  onChanged: (v) => setState(() => _styles = v),
+                ),
+              ),
+              _Row(
+                'History',
+                NativeSegmentedButtons(
+                  labels: const ['Back', 'Forward'],
+                  symbols: const ['chevron.left', 'chevron.right'],
+                  segmentTooltips: const ['Go back', 'Go forward'],
+                  onPressed: (i) =>
+                      setState(() => _last = i == 0 ? 'back' : 'forward'),
+                ),
+              ),
+              Row(
+                children: [
+                  NativeDisclosureButton(
+                    expanded: _details,
+                    semanticsLabel: 'Details',
+                    onChanged: (v) => setState(() => _details = v),
+                  ),
+                  const SizedBox(width: 6),
+                  const Text('Details'),
+                  const Spacer(),
+                  NativeHelpButton(
+                    tooltip: 'What these controls are',
+                    onPressed: () => setState(() => _last = 'help'),
+                  ),
+                ],
+              ),
+              if (_details)
+                const _Caption(
+                  'NSDatePicker, NSStepper, NSColorWell, and NSSegmentedControl '
+                  'in momentary and select-any modes.',
+                ),
+            ],
+          ),
+          _Group(
+            title: 'Popovers, alerts, and the window',
+            children: [
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  NativeButton(
+                    key: _shareKey,
+                    label: 'Popover',
+                    onPressed: _showPopover,
+                  ),
+                  NativeButton(label: 'Rename…', onPressed: _rename),
+                  NativeButton(
+                    label: 'Subtitle',
+                    onPressed: () =>
+                        NativeWindow.configure(subtitle: '$_presses presses'),
+                  ),
+                  NativeButton(label: 'Clear search', onPressed: _search.clear),
+                ],
+              ),
+            ],
+          ),
+          _Group(
+            title: 'Glass group',
+            children: [
+              NativeCheckbox(
+                value: _merged,
+                label: 'Close together',
+                onChanged: (v) => setState(() => _merged = v),
+              ),
+              SizedBox(
+                height: 56,
+                child: NativeGlassGroup(
+                  spacing: 16,
+                  child: Row(
+                    children: [
+                      const NativeGlassGroupItem(
+                        cornerRadius: 22,
+                        child: SizedBox(
+                          width: 44,
+                          height: 44,
+                          child: Icon(Icons.play_arrow),
+                        ),
+                      ),
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 400),
+                        curve: Curves.easeInOut,
+                        width: _merged ? 4 : 48,
+                      ),
+                      const NativeGlassGroupItem(
+                        cornerRadius: 22,
+                        child: SizedBox(
+                          width: 44,
+                          height: 44,
+                          child: Icon(Icons.skip_next),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          _Group(
             title: 'Glass',
             children: [
               NativeGlassContainer(
@@ -251,15 +430,57 @@ class _ControlsPageState extends State<ControlsPage> {
     setState(() => _last = index == 0 ? 'Delete' : 'Cancel');
   }
 
+  Future<void> _showPopover() async {
+    final box = _shareKey.currentContext!.findRenderObject()! as RenderBox;
+    final choice = await showNativePopover<String>(
+      context: context,
+      anchor: box.localToGlobal(Offset.zero) & box.size,
+      title: 'Share this page?',
+      message: 'Anyone with the link can view it.',
+      actions: const [
+        NativePopoverAction('Cancel', value: 'cancel'),
+        NativePopoverAction('Copy Link', value: 'copy', isDefault: true),
+      ],
+    );
+    setState(() => _last = 'popover: ${choice ?? 'dismissed'}');
+  }
+
+  Future<void> _rename() async {
+    final result = await showNativeAlertWithResult(
+      context: context,
+      title: 'Rename item',
+      style: NativeAlertStyle.informational,
+      textField: const NativeAlertTextField(text: 'Untitled'),
+      suppressionLabel: 'Do not ask again',
+      buttons: const [
+        NativeAlertButton('Rename', isDefault: true),
+        NativeAlertButton('Cancel', isCancel: true),
+      ],
+    );
+    if (result.index == 0) setState(() => _last = 'renamed: ${result.text}');
+  }
+
   Future<void> _showMenu(Offset position) async {
     final choice = await showNativeMenu<String>(
       context: context,
       globalPosition: position,
       items: const [
-        NativeMenuItem(title: 'Copy', value: 'copy', symbol: 'doc.on.doc'),
+        NativeMenuItem(
+          title: 'Copy',
+          value: 'copy',
+          symbol: 'doc.on.doc',
+          shortcut: NativeMenuShortcut('c'),
+        ),
         NativeMenuItem(title: 'Paste', value: 'paste', enabled: false),
         NativeMenuDivider(),
         NativeMenuItem(title: 'Rename', value: 'rename'),
+        NativeSubmenu(
+          title: 'Sort By',
+          items: [
+            NativeMenuItem(title: 'Name', value: 'name', checked: true),
+            NativeMenuItem(title: 'Size', value: 'size'),
+          ],
+        ),
       ],
     );
     if (choice != null) setState(() => _last = 'menu: $choice');

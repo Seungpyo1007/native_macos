@@ -1,3 +1,46 @@
+## 0.3.0
+
+**Breaking:** `NativeMenuEntry` gains `NativeSubmenu`. Exhaustive `switch`
+statements over the sealed class need the new case.
+
+* Every control takes a `semanticsLabel` (the AppKit accessibility label)
+  and a `tooltip`, and `focusable: true` lets a click or Full Keyboard Access
+  focus it. Controls still refuse focus by default, so keys stay with
+  Flutter.
+* `NativeWindow.configure` sets the window's subtitle, full-size content,
+  transparent title bar, and title bar separator, and `NativeWindow.metrics`
+  reports the title bar height that full-size content goes under.
+* `NativeGlassGroup` and `NativeGlassGroupItem` draw glass shapes in one
+  `NSGlassEffectContainerView`, so shapes within `spacing` blend and moving
+  shapes morph. Before macOS 26 each item is a separate
+  `NSVisualEffectView`.
+* `NativeSidebar` puts a sidebar with a native background next to the
+  content: a floating glass panel on macOS 26, the sidebar material before
+  it or with `NativeSidebarStyle.material`. It can be resizable.
+* `showNativePopover` shows an `NSPopover` with a title, a message, and
+  buttons, pointing at a rect of the Flutter view.
+* Menus take `NativeSubmenu`, `NativeMenuItem.checked`, and
+  `NativeMenuItem.shortcut` (`NativeMenuShortcut`), in `showNativeMenu` and
+  toolbar menus.
+* `NativeDatePicker` (`NSDatePicker`, text field or graphical, date, time,
+  or both), `NativeStepper` (`NSStepper`), and `NativeColorWell`
+  (`NSColorWell`; its styles need macOS 13).
+* `NativeButton` takes `isDefault` and `isCancel` for Return and Escape.
+  `NativeHelpButton` and `NativeDisclosureButton` are the help and
+  disclosure bezels. Before macOS 26, an icon-only button with
+  `NativeBorderShape.circle` uses the circular bezel instead of ignoring
+  the shape.
+* `NativeSegmentedControl` takes SF Symbol `symbols` and `segmentTooltips`.
+  `NativeSegmentedButtons` are momentary segments, such as back and forward,
+  and `NativeMultiSegmentedControl` selects any number of segments.
+* `showNativeAlertWithResult` adds a suppression checkbox and a text field,
+  secure or not, and returns a `NativeAlertResult` with the button, the
+  checkbox, and the text.
+* `NativeToolbar` takes a `displayMode` (labels show with the expanded
+  style), `NativeToolbarSegments.tooltips`, and a
+  `NativeToolbarSearchController` to read and set the search text. Toolbar
+  menus and the search field follow a right-to-left `Directionality`.
+
 ## 0.2.1
 
 * Fix `NativeMacos.hasLiquidGlass` being true for apps built with an Xcode

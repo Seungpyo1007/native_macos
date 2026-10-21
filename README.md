@@ -46,8 +46,8 @@ NativeGlassContainer(
 
 | Platform | Native views | Notes |
 | --- | --- | --- |
-| macOS 26 and later | Yes | Liquid Glass, glass bezels, tint prominence, border shapes. |
-| macOS 12 to 25 | Yes | Same controls without glass. Glass surfaces use `NSVisualEffectView`; glass buttons use the push bezel. |
+| macOS 26 and later | Yes | Liquid Glass, glass bezels, tint prominence, border shapes, glass groups that blend, a floating glass sidebar. |
+| macOS 12 to 25 | Yes | Same controls without glass. Glass surfaces and glass group items use `NSVisualEffectView` and do not blend; glass buttons use the push bezel; the sidebar uses the sidebar material; a circular icon-only button uses the circular bezel. Color well styles need macOS 13. |
 | Other platforms and web | No | Each widget shows a Flutter fallback, or the `fallback` you pass. |
 
 Glass needs Xcode 26 or later at build time. With an older Xcode the package
@@ -60,12 +60,29 @@ needs macOS 27 and Xcode 27.
   buttons, segments, menus, and a search field declared in Dart.
 - `NativeGlassContainer`: an `NSGlassEffectView` sized by its child and
   painted under it.
+- `NativeGlassGroup` and `NativeGlassGroupItem`: glass shapes in one
+  `NSGlassEffectContainerView`, which blend when close and morph when they
+  move.
+- `NativeSidebar`: a sidebar on the sidebar material, or a floating glass
+  panel on macOS 26, optionally resizable.
+- `NativeWindow.configure`: subtitle, full-size content, transparent title
+  bar, and title bar separator.
 - `NativeButton`: `NSButton` with push, glass, or borderless bezels, tint
   prominence, border shape, control size, SF Symbols, and destructive style.
-- `NativeSwitch`, `NativeCheckbox`, `NativeSegmentedControl`,
-  `NativeSlider`, `NativePopUpButton`, `NativeProgressIndicator`.
-- `showNativeAlert`: an `NSAlert` as a sheet or a modal window.
-- `showNativeMenu`: an `NSMenu` at the pointer, for context menus.
+  Default (Return) and cancel (Escape) buttons, `NativeHelpButton`, and
+  `NativeDisclosureButton`.
+- `NativeSwitch`, `NativeCheckbox`, `NativeSegmentedControl` (with SF
+  Symbols), `NativeSegmentedButtons`, `NativeMultiSegmentedControl`,
+  `NativeSlider`, `NativePopUpButton`, `NativeProgressIndicator`,
+  `NativeDatePicker`, `NativeStepper`, `NativeColorWell`.
+- `showNativeAlert` and `showNativeAlertWithResult`: an `NSAlert` as a sheet
+  or a modal window, with an optional suppression checkbox and text field.
+- `showNativeMenu`: an `NSMenu` at the pointer, for context menus, with
+  submenus, checkmarks, and key equivalents.
+- `showNativePopover`: an `NSPopover` with a title, a message, and buttons,
+  pointing at any Flutter rect.
+- Every control takes a `semanticsLabel` and a `tooltip`, and can opt into
+  keyboard focus with `focusable`.
 - `NativeInputBlocker`: keeps native views from taking clicks under overlays.
 - Native views follow your app's theme brightness and text direction, and
   use the user's accent color unless you pass a tint.
@@ -125,6 +142,55 @@ title, title visibility, and toolbar style. The search field keeps its own
 text, also when items before it change, and reports edits through
 `onChanged` and `onSubmitted`.
 
+### Glass groups
+
+Glass shapes only blend and morph inside one `NSGlassEffectContainerView`.
+`NativeGlassGroup` is that container: put `NativeGlassGroupItem`s anywhere
+below it, and the group draws their glass together.
+
+```dart
+NativeGlassGroup(
+  spacing: 16,
+  child: Row(
+    children: [
+      NativeGlassGroupItem(cornerRadius: 22, child: playButton),
+      AnimatedContainer(duration: duration, width: apart ? 48 : 4),
+      NativeGlassGroupItem(cornerRadius: 22, child: nextButton),
+    ],
+  ),
+)
+```
+
+Items closer than `spacing` blend into one shape, and an item that moves
+morphs instead of jumping. The group measures its items after each layout
+and paint, so animate them with layout or painting widgets
+(`AnimatedContainer`, `AnimatedAlign`); an item moved only by a compositing
+transform keeps its old glass until it paints again. Before macOS 26 each
+item is a separate `NSVisualEffectView`.
+
+### Sidebar and window
+
+```dart
+NativeSidebar(
+  resizable: true,
+  sidebar: sourceList,
+  child: content,
+)
+
+await NativeWindow.configure(
+  subtitle: '3 items',
+  fullSizeContent: true,
+  transparentTitlebar: true,
+);
+final metrics = await NativeWindow.metrics();
+```
+
+With the automatic style, the sidebar is a floating glass panel inset by
+`glassInset` on macOS 26 and the sidebar material before it; `sidebar` is
+padded to match. Give the sidebar content no background of its own, or it
+covers the native one. With `fullSizeContent`, Flutter draws under the title
+bar; pad content that must stay visible by `metrics.titlebarHeight`.
+
 ### Glass styles
 
 `NativeGlassStyle.regular`, the default as in AppKit, is frosted: it keeps
@@ -164,6 +230,27 @@ NativePopUpButton<Sort>(
 )
 ```
 
+More controls follow the same pattern:
+
+```dart
+NativeDatePicker(value: date, onChanged: (v) => setState(() => date = v))
+NativeStepper(value: copies, min: 1, max: 99, onChanged: setCopies)
+NativeColorWell(value: color, onChanged: (v) => setState(() => color = v))
+NativeMultiSegmentedControl(
+  labels: const ['Bold', 'Italic', 'Underline'],
+  symbols: const ['bold', 'italic', 'underline'],
+  selected: styles,
+  onChanged: (v) => setState(() => styles = v),
+)
+NativeSegmentedButtons(
+  labels: const ['Back', 'Forward'],
+  symbols: const ['chevron.left', 'chevron.right'],
+  onPressed: (i) => i == 0 ? back() : forward(),
+)
+NativeDisclosureButton(expanded: open, onChanged: (v) => setState(() => open = v))
+NativeHelpButton(onPressed: showHelp)
+```
+
 If the parent does not rebuild with the new value by the next frame, the
 native control goes back to the old one. Call `setState` before any `await`
 in the callback, or the control flickers back and forth.
@@ -196,8 +283,55 @@ GestureDetector(
 )
 ```
 
+Menu items can show a checkmark and a key equivalent, and a
+`NativeSubmenu` nests items:
+
+```dart
+const NativeMenuItem(
+  title: 'Copy',
+  value: 'copy',
+  shortcut: NativeMenuShortcut('c'),
+),
+NativeSubmenu(
+  title: 'Sort By',
+  items: [
+    NativeMenuItem(title: 'Name', value: 'name', checked: sort == 'name'),
+    NativeMenuItem(title: 'Size', value: 'size', checked: sort == 'size'),
+  ],
+),
+```
+
+Key equivalents choose an item while its menu is open; they do not register
+app-wide shortcuts. `NativePopUpButton` does not take submenus.
+
+```dart
+final result = await showNativeAlertWithResult(
+  context: context,
+  title: 'Rename item',
+  textField: const NativeAlertTextField(text: 'Untitled'),
+  suppressionLabel: 'Do not ask again',
+  buttons: const [
+    NativeAlertButton('Rename', isDefault: true),
+    NativeAlertButton('Cancel', isCancel: true),
+  ],
+);
+if (result.index == 0) rename(result.text!);
+
+final box = context.findRenderObject()! as RenderBox;
+final choice = await showNativePopover<String>(
+  context: context,
+  anchor: box.localToGlobal(Offset.zero) & box.size,
+  title: 'Share this page?',
+  actions: const [
+    NativePopoverAction('Cancel', value: 'cancel'),
+    NativePopoverAction('Copy Link', value: 'copy', isDefault: true),
+  ],
+);
+```
+
 `showNativeAlert` returns the index of the pressed button, or -1 if the
-alert closed without one. Both throw `UnsupportedError` off macOS, and `NativeMacosException` with code
+alert closed without one. A popover returns the chosen action's value, or
+null when it closes another way. Both throw `UnsupportedError` off macOS, and `NativeMacosException` with code
 `no_window` when the Flutter view is not in a window yet.
 
 ### Overlays
@@ -225,6 +359,23 @@ await NativeMacos.loadCapabilities(); // optional, see below
 if (NativeMacos.hasLiquidGlass) { /* glass is drawn */ }
 ```
 
+### Accessibility and keyboard
+
+Every control takes `semanticsLabel`, the AppKit accessibility label (give
+one to icon-only buttons), and `tooltip`, its help tag. Controls refuse
+keyboard focus by default, so key presses stay with Flutter and your
+shortcuts keep working. Pass `focusable: true` to let a click or Full
+Keyboard Access focus the control; while it has focus, keys go to AppKit
+until the user clicks Flutter content again. `NativeDatePicker` is focusable
+by default, because its text fields need the keyboard. `NativeButton`'s
+`isDefault` and `isCancel` give it Return and Escape when Flutter does not
+handle those keys.
+
+`NativeToolbar` takes a `displayMode` for icons and labels (labels show with
+`NativeToolbarStyle.expanded`; the unified styles keep icons only), segment
+`tooltips`, and a `NativeToolbarSearchController` that reads and sets the
+search field's text.
+
 `hasLiquidGlass` is true when native views actually draw Liquid Glass, which
 needs macOS 26 and an app built with Xcode 26 or later. The first native
 widget asks the native side, which knows both; until that answer arrives
@@ -245,10 +396,12 @@ These come from how Flutter embeds AppKit views today.
 - `gestureRecognizers` do nothing on macOS. Native controls handle the mouse
   themselves, so a Flutter `GestureDetector` around one does not see its
   clicks.
-- Tab focus does not move into native views. The controls do not take
-  keyboard focus, so your Flutter shortcuts keep working, but they cannot be
-  operated with the keyboard.
-- Native views are not in the VoiceOver tree when Flutter semantics are on.
+- Flutter's Tab traversal does not move into native views. A `focusable`
+  control takes focus from a click or Full Keyboard Access, and gives it back
+  when the user clicks Flutter content.
+- Flutter's semantics tree does not include native views, so VoiceOver may
+  not reach them while Flutter semantics are on. `semanticsLabel` is the
+  label AppKit reports when it does, such as for a focused control.
 - Flutter blocks native input by the bounding box of what it paints, so a
   border or shadow over a native view can block the whole area.
 - Clips other than rectangles, rounded rectangles, and ovals are ignored, and
@@ -264,7 +417,9 @@ These come from how Flutter embeds AppKit views today.
   long lists.
 - Only the main Flutter view is supported; multi-window is still
   experimental in Flutter. `NativeToolbar` replaces any toolbar you set on
-  that window yourself.
+  that window yourself. `NativeToolbar` item order follows the app's
+  language as in every AppKit toolbar; a right-to-left `Directionality`
+  changes its menus and search field only.
 
 ## Related packages
 

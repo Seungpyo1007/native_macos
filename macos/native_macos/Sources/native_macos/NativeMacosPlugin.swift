@@ -4,6 +4,7 @@ import FlutterMacOS
 public class NativeMacosPlugin: NSObject, FlutterPlugin {
   private weak var registrar: FlutterPluginRegistrar?
   private let menus = MenuPresenter()
+  private let popovers = PopoverPresenter()
   private var toolbar: ToolbarController?
 
   public static func register(with registrar: FlutterPluginRegistrar) {
@@ -17,6 +18,11 @@ public class NativeMacosPlugin: NSObject, FlutterPlugin {
       "slider": { SliderView() },
       "popup": { PopUpButtonView() },
       "progress": { ProgressView() },
+      "glassGroup": { GlassGroupView() },
+      "sidebar": { SidebarView() },
+      "datePicker": { DatePickerView() },
+      "stepper": { StepperView() },
+      "colorWell": { ColorWellView() },
     ]
     for (id, make) in controls {
       registrar.register(NativeViewFactory(messenger: messenger, make: make), withId: "native_macos/\(id)")
@@ -44,6 +50,10 @@ public class NativeMacosPlugin: NSObject, FlutterPlugin {
     case "clear":
       toolbar?.clear(window: window)
       result(nil)
+    case "searchText":
+      let args = call.arguments as? [String: Any] ?? [:]
+      let found = toolbar?.setSearchText(args["text"] as? String ?? "", id: args["id"] as? String ?? "") ?? false
+      result(found)
     default:
       result(FlutterMethodNotImplemented)
     }
@@ -67,6 +77,16 @@ public class NativeMacosPlugin: NSObject, FlutterPlugin {
     case "showMenu":
       guard let view = registrar?.view, view.window != nil else { return result(noWindow()) }
       menus.show(args, in: view, result: result)
+    case "showPopover":
+      guard let view = registrar?.view, view.window != nil else { return result(noWindow()) }
+      popovers.show(args, in: view, result: result)
+    case "configureWindow":
+      guard let window = registrar?.view?.window else { return result(noWindow()) }
+      WindowConfigurator.apply(args, to: window)
+      result(WindowConfigurator.metrics(of: window))
+    case "windowMetrics":
+      guard let window = registrar?.view?.window else { return result(noWindow()) }
+      result(WindowConfigurator.metrics(of: window))
     default:
       result(FlutterMethodNotImplemented)
     }

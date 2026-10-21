@@ -28,6 +28,9 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
   private(set) var session: String?
   /// The window's own settings from before the toolbar, put back by clear.
   private var saved: SavedWindow?
+  /// Whether menus and search fields lay out right to left. Item order
+  /// follows the app's language, as for every AppKit toolbar.
+  private var rtl = false
 
   private struct SavedWindow {
     let toolbar: NSToolbar?
@@ -56,6 +59,7 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
     let next = p["items"] as? [[String: Any]] ?? []
     let nextShape = next.map(Self.shape(of:))
     session = p["session"] as? String
+    rtl = p["rtl"] as? Bool ?? false
 
     if let toolbar, self.window === window, window.toolbar === toolbar {
       specs = next
@@ -89,13 +93,14 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
       searchItems = [:]
       let toolbar = NSToolbar(identifier: Self.makeToolbarIdentifier())
       toolbar.delegate = self
-      toolbar.displayMode = .iconOnly
       toolbar.allowsUserCustomization = false
+      toolbar.displayMode = Self.displayMode(p["displayMode"])
       self.toolbar = toolbar
       self.window = window
       window.toolbar = toolbar
     }
 
+    if let toolbar { toolbar.displayMode = Self.displayMode(p["displayMode"]) }
     window.appearance = NSAppearance(named: p["brightness"] as? String == "dark" ? .darkAqua : .aqua)
     if let title = p["title"] as? String { window.title = title }
     window.titleVisibility = p["showsTitle"] as? Bool ?? true ? .visible : .hidden
@@ -128,6 +133,26 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
     shape = []
     searchIds = [:]
     searchItems = [:]
+  }
+
+  /// Sets the text of the search field with Dart id [id] without reporting
+  /// a change, as for a controller set from Dart. Returns whether it exists.
+  @discardableResult
+  func setSearchText(_ text: String, id: String) -> Bool {
+    guard let search = searchItems[id] else { return false }
+    search.searchField.stringValue = text
+    return true
+  }
+
+  /// The text of the search field with Dart id [id].
+  func searchText(id: String) -> String? { searchItems[id]?.searchField.stringValue }
+
+  private static func displayMode(_ v: Any?) -> NSToolbar.DisplayMode {
+    switch v as? String {
+    case "iconAndLabel": return .iconAndLabel
+    case "labelOnly": return .labelOnly
+    default: return .iconOnly
+    }
   }
 
   private static func shape(of spec: [String: Any]) -> String {
@@ -236,7 +261,11 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
       let index = spec["selectedIndex"] as? Int ?? -1
       group.selectedIndex = (0..<group.subitems.count).contains(index) ? index : -1
       group.isEnabled = enabled
-      group.subitems.forEach { $0.isEnabled = enabled }
+      let tooltips = spec["tooltips"] as? [String] ?? []
+      for (i, sub) in group.subitems.enumerated() {
+        sub.isEnabled = enabled
+        sub.toolTip = tooltips[safe: i]
+      }
     case "menu":
       guard let menuItem = item as? NSMenuToolbarItem else { return }
       menuItem.label = label
@@ -246,15 +275,17 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
       menuItem.isEnabled = enabled
       let menu = NSMenu()
       menu.autoenablesItems = false
-      let id = spec["id"] as? String
-      for entry in makeMenuItems(spec["items"] as? [[String: Any]] ?? [], target: self, action: #selector(menuSelected(_:))) {
-        entry.representedObject = id
+      menu.userInterfaceLayoutDirection = rtl ? .rightToLeft : .leftToRight
+      let entries = spec["items"] as? [[String: Any]] ?? []
+      for entry in makeMenuItems(entries, target: self, action: #selector(menuSelected(_:)), represented: spec["id"]) {
         menu.addItem(entry)
       }
       menuItem.menu = menu
     case "search":
       guard let search = item as? NSSearchToolbarItem else { return }
       search.searchField.placeholderString = spec["placeholder"] as? String
+      search.searchField.baseWritingDirection = rtl ? .rightToLeft : .leftToRight
+      search.searchField.alignment = rtl ? .right : .natural
     default:
       break
     }

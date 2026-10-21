@@ -45,4 +45,44 @@ void main() {
       expect(NativeMacos.hasLiquidGlass, false);
     }
   });
+
+  testWidgets('new controls report a size and the window answers', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              NativeDatePicker(
+                value: DateTime(2026, 10, 22),
+                onChanged: (_) {},
+              ),
+              NativeStepper(value: 1, onChanged: (_) {}),
+              NativeColorWell(
+                value: const Color(0xFF3366CC),
+                onChanged: (_) {},
+              ),
+              NativeHelpButton(onPressed: () {}),
+            ],
+          ),
+        ),
+      ),
+    );
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    for (final type in [
+      NativeDatePicker,
+      NativeStepper,
+      NativeColorWell,
+      NativeHelpButton,
+    ]) {
+      final size = tester.getSize(find.byType(type));
+      expect(size.width, greaterThan(0), reason: '$type');
+      expect(size.height, greaterThan(0), reason: '$type');
+    }
+    final metrics = await NativeWindow.metrics();
+    expect(metrics.titlebarHeight, greaterThan(0));
+  });
 }
