@@ -23,6 +23,12 @@ enum NativeToolbarStyle {
   unifiedCompact,
 }
 
+/// What toolbar items show (`NSToolbar.DisplayMode`).
+///
+/// AppKit shows labels only with [NativeToolbarStyle.expanded]; the unified
+/// styles keep icons only whatever the mode.
+enum NativeToolbarDisplayMode { iconOnly, iconAndLabel, labelOnly }
+
 /// An item in a [NativeToolbar].
 sealed class NativeToolbarItem {
   const NativeToolbarItem();
@@ -116,7 +122,9 @@ final class NativeToolbarSegments extends NativeToolbarItem {
     required this.selectedIndex,
     required this.onChanged,
     this.symbols,
-  }) : assert(symbols == null || symbols.length == labels.length);
+    this.tooltips,
+  }) : assert(symbols == null || symbols.length == labels.length),
+       assert(tooltips == null || tooltips.length == labels.length);
 
   final String id;
 
@@ -125,6 +133,9 @@ final class NativeToolbarSegments extends NativeToolbarItem {
 
   /// One SF Symbol name per segment, shown instead of the labels.
   final List<String>? symbols;
+
+  /// One help tag per segment.
+  final List<String>? tooltips;
 
   final int selectedIndex;
 
@@ -136,6 +147,7 @@ final class NativeToolbarSegments extends NativeToolbarItem {
     'id': id,
     'labels': labels,
     'symbols': symbols,
+    'tooltips': tooltips,
     'selectedIndex': selectedIndex,
     'enabled': onChanged != null,
   };
@@ -177,22 +189,60 @@ final class NativeToolbarMenu<T> extends NativeToolbarItem {
   };
 }
 
+/// The text of a [NativeToolbarSearch], readable and settable from Dart.
+///
+/// Typing in the field updates [text] and notifies listeners. Setting [text]
+/// or calling [clear] changes the field without calling the search item's
+/// `onChanged`.
+class NativeToolbarSearchController extends ChangeNotifier {
+  NativeToolbarSearchController({String? text}) : _text = text ?? '';
+
+  String _text;
+
+  String get text => _text;
+
+  set text(String value) {
+    if (value == _text) return;
+    _text = value;
+    _fromDart = true;
+    notifyListeners();
+    _fromDart = false;
+  }
+
+  /// Empties the field.
+  void clear() => text = '';
+
+  /// True while listeners hear about a change made from Dart, which the
+  /// toolbar must send to the field.
+  bool _fromDart = false;
+
+  void _typed(String value) {
+    if (value == _text) return;
+    _text = value;
+    notifyListeners();
+  }
+}
+
 /// A search field that expands from a toolbar button
 /// (`NSSearchToolbarItem`).
 ///
 /// The field keeps its own text: [onChanged] reports each edit and
-/// [onSubmitted] reports Return.
+/// [onSubmitted] reports Return. A [controller] reads and sets the text
+/// from Dart.
 final class NativeToolbarSearch extends NativeToolbarItem {
   const NativeToolbarSearch({
     required this.id,
     this.placeholder,
     this.onChanged,
     this.onSubmitted,
+    this.controller,
   });
 
   final String id;
 
   final String? placeholder;
+
+  final NativeToolbarSearchController? controller;
 
   final ValueChanged<String>? onChanged;
 
@@ -247,6 +297,7 @@ class NativeToolbar extends StatefulWidget {
     this.title,
     this.showsTitle = true,
     this.style = NativeToolbarStyle.unified,
+    this.displayMode = NativeToolbarDisplayMode.iconOnly,
   });
 
   final List<NativeToolbarItem> items;
@@ -260,6 +311,9 @@ class NativeToolbar extends StatefulWidget {
   final bool showsTitle;
 
   final NativeToolbarStyle style;
+
+  /// Whether items show icons, labels, or both.
+  final NativeToolbarDisplayMode displayMode;
 
   @override
   State<NativeToolbar> createState() => _NativeToolbarState();
@@ -287,11 +341,54 @@ class _NativeToolbarState extends State<NativeToolbar> {
 
   bool get _isActive => identical(_owner, this);
 
+  /// The search controllers this toolbar listens to, by item id.
+  final _controllers = <String, NativeToolbarSearchController>{};
+
+  /// Search fields that already got their controller's text. A field keeps
+  /// its text across updates, so only new ones are filled; filling one on
+  /// every update could undo a keystroke still on its way to Dart.
+  final _filledSearch = <String>{};
+
   @override
   void initState() {
     super.initState();
     _mounted.add(this);
     if (NativeMacos.isSupported) NativeMacos.loadCapabilities();
+    _listenToControllers();
+  }
+
+  void _listenToControllers() {
+    final next = <String, NativeToolbarSearchController>{
+      for (final item in widget.items)
+        if (item case NativeToolbarSearch(:final id, :final controller?))
+          id: controller,
+    };
+    for (final MapEntry(key: id, value: old) in _controllers.entries) {
+      if (!identical(next[id], old)) old.removeListener(_onControllerChanged);
+    }
+    for (final MapEntry(key: id, value: controller) in next.entries) {
+      if (!identical(_controllers[id], controller)) {
+        controller.addListener(_onControllerChanged);
+      }
+    }
+    _controllers
+      ..clear()
+      ..addAll(next);
+    // A removed field comes back empty.
+    _filledSearch.retainAll(next.keys);
+  }
+
+  void _onControllerChanged() {
+    if (!_isActive || !NativeMacos.isSupported) return;
+    for (final MapEntry(key: id, value: controller) in _controllers.entries) {
+      if (!controller._fromDart) continue;
+      _channel
+          .invokeMethod<bool>('searchText', {'id': id, 'text': controller.text})
+          .catchError((Object error, StackTrace stack) {
+            _report(error, stack);
+            return false;
+          });
+    }
   }
 
   @override
@@ -308,11 +405,15 @@ class _NativeToolbarState extends State<NativeToolbar> {
   @override
   void didUpdateWidget(NativeToolbar oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _listenToControllers();
     _scheduleSend();
   }
 
   @override
   void dispose() {
+    for (final controller in _controllers.values) {
+      controller.removeListener(_onControllerChanged);
+    }
     _mounted.remove(this);
     _reassign();
     super.dispose();
@@ -338,6 +439,8 @@ class _NativeToolbarState extends State<NativeToolbar> {
       }
     } else {
       _channel.setMethodCallHandler(next._onEvent);
+      // The new owner's items are created again, empty.
+      next._filledSearch.clear();
       next._scheduleSend(force: true);
     }
     return true;
@@ -373,7 +476,11 @@ class _NativeToolbarState extends State<NativeToolbar> {
       'title': widget.title,
       'showsTitle': widget.showsTitle,
       'style': widget.style.name,
+      'displayMode': widget.displayMode.name,
       'brightness': nativeBrightness(context).name,
+      // Menus and search fields follow it; item order follows the app's
+      // language, as in every AppKit toolbar.
+      'rtl': Directionality.maybeOf(context) == TextDirection.rtl,
       'items': [
         for (final item in widget.items)
           {
@@ -401,6 +508,14 @@ class _NativeToolbarState extends State<NativeToolbar> {
     try {
       await _channel.invokeMethod<void>('set', spec);
       _windowRetries = 0;
+      // A new field starts empty; its controller's text fills it.
+      for (final MapEntry(key: id, value: controller) in _controllers.entries) {
+        if (!_filledSearch.add(id) || controller.text.isEmpty) continue;
+        await _channel.invokeMethod<bool>('searchText', {
+          'id': id,
+          'text': controller.text,
+        });
+      }
     } on PlatformException catch (e, stack) {
       // The window can be missing for the first frames after launch.
       if (e.code == 'no_window' && ++_windowRetries <= 60) {
@@ -441,7 +556,12 @@ class _NativeToolbarState extends State<NativeToolbar> {
         _scheduleSend(force: true);
       case final NativeToolbarMenu<Object?> menu:
         menu._select(value);
-      case NativeToolbarSearch(:final onChanged, :final onSubmitted):
+      case NativeToolbarSearch(
+        :final onChanged,
+        :final onSubmitted,
+        :final controller,
+      ):
+        controller?._typed(value as String);
         if (args['type'] == 'submitted') {
           onSubmitted?.call(value as String);
         } else {

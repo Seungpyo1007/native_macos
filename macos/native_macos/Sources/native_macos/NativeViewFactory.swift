@@ -15,10 +15,16 @@ protocol NativeControl: NSView {
 
   /// Whether clicks pass through to Flutter, as for glass.
   var passesClicksThrough: Bool { get }
+
+  /// The AppKit control that takes the tooltip, the VoiceOver label, and
+  /// keyboard focus, or nil for views without one, such as glass.
+  var accessibilityTarget: NSView? { get }
 }
 
 extension NativeControl {
   var passesClicksThrough: Bool { false }
+
+  var accessibilityTarget: NSView? { passesClicksThrough ? nil : subviews.first }
 }
 
 final class NativeViewFactory: NSObject, FlutterPlatformViewFactory {
@@ -97,6 +103,17 @@ final class HostView: NSView {
     setLayoutDirection((p["rtl"] as? Bool ?? false) ? .rightToLeft : .leftToRight, on: self)
     interactive = p["interactive"] as? Bool ?? true
     control.apply(p)
+    applyAccessibility(p)
+  }
+
+  /// Applies the settings every control shares, after the control's own.
+  private func applyAccessibility(_ p: [String: Any]) {
+    guard let target = control.accessibilityTarget else { return }
+    target.toolTip = p["tooltip"] as? String
+    // Nil puts back AppKit's label, which reads the control's title.
+    target.setAccessibilityLabel(p["semanticsLabel"] as? String)
+    // Controls refuse focus by default so the Flutter view keeps the keys.
+    (target as? NSControl)?.refusesFirstResponder = !(p["focusable"] as? Bool ?? false)
   }
 
   // The fitting size can change without an update from Dart: a new system

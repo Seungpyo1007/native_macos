@@ -15,6 +15,9 @@ class NativePopUpButton<T> extends StatefulWidget {
     required this.value,
     required this.onChanged,
     this.controlSize = NativeControlSize.regular,
+    this.semanticsLabel,
+    this.tooltip,
+    this.focusable = false,
     this.fallback,
   });
 
@@ -26,6 +29,17 @@ class NativePopUpButton<T> extends StatefulWidget {
   final ValueChanged<T>? onChanged;
 
   final NativeControlSize controlSize;
+
+  /// The VoiceOver label. Null keeps AppKit's, which reads the control's
+  /// title.
+  final String? semanticsLabel;
+
+  /// Shown when the pointer rests on the control (`toolTip`).
+  final String? tooltip;
+
+  /// Whether Tab and Full Keyboard Access can focus the control. While it
+  /// has focus, key presses go to AppKit instead of Flutter.
+  final bool focusable;
 
   /// Shown when native views are not supported. Defaults to a
   /// [CupertinoButton] that opens a [CupertinoActionSheet].
@@ -49,6 +63,10 @@ class _NativePopUpButtonState<T> extends State<NativePopUpButton<T>> {
 
   @override
   Widget build(BuildContext context) {
+    assert(
+      !widget.items.any((entry) => entry is NativeSubmenu<T>),
+      'NativePopUpButton items cannot contain submenus.',
+    );
     if (!NativeMacos.isSupported) {
       return widget.fallback ?? _fallback(context);
     }
@@ -62,6 +80,9 @@ class _NativePopUpButtonState<T> extends State<NativePopUpButton<T>> {
     return NativeView(
       key: _view,
       viewType: 'popup',
+      semanticsLabel: widget.semanticsLabel,
+      tooltip: widget.tooltip,
+      focusable: widget.focusable,
       enabled: widget.onChanged != null,
       estimatedSize: Size(
         longest,

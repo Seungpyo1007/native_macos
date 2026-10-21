@@ -275,7 +275,7 @@ void main() {
       await tester.pump();
       final params = views.created['native_macos/popup']!;
       expect(params['selectedIndex'], 2);
-      expect((params['items'] as List)[1], {'divider': true});
+      expect((params['items'] as List)[1], {'tag': 1, 'divider': true});
       await views.emit(tester, 'native_macos/popup', 'changed', {'value': 0});
       expect(chosen, 'a');
     }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));

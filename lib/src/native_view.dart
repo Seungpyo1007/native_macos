@@ -22,6 +22,9 @@ class NativeView extends StatefulWidget {
     this.fill = false,
     this.tint,
     this.enabled = true,
+    this.semanticsLabel,
+    this.tooltip,
+    this.focusable = false,
   });
 
   /// The id after `native_macos/`, such as `button`.
@@ -45,6 +48,18 @@ class NativeView extends StatefulWidget {
   final Color? tint;
 
   final bool enabled;
+
+  /// The VoiceOver label of the AppKit control. Null keeps AppKit's own,
+  /// which is usually the control's title.
+  final String? semanticsLabel;
+
+  /// The control's help tag (`NSView.toolTip`).
+  final String? tooltip;
+
+  /// Whether the control can become the key view, so Tab and Full Keyboard
+  /// Access reach it. While it has focus, key presses go to AppKit instead of
+  /// Flutter.
+  final bool focusable;
 
   @override
   State<NativeView> createState() => NativeViewState();
@@ -101,6 +116,9 @@ class NativeViewState extends State<NativeView> {
       'tint': widget.tint?.toARGB32(),
       'enabled': widget.enabled,
       'interactive': !NativeInputBlocker.isBlocked(context),
+      'semanticsLabel': widget.semanticsLabel,
+      'tooltip': widget.tooltip,
+      'focusable': widget.focusable,
     };
   }
 

@@ -15,6 +15,8 @@ class NativeProgressIndicator extends StatelessWidget {
     this.value,
     this.style = NativeProgressStyle.bar,
     this.controlSize = NativeControlSize.regular,
+    this.semanticsLabel,
+    this.tooltip,
     this.fallback,
   }) : assert(value == null || (value >= 0 && value <= 1));
 
@@ -24,6 +26,12 @@ class NativeProgressIndicator extends StatelessWidget {
   final NativeProgressStyle style;
 
   final NativeControlSize controlSize;
+
+  /// The VoiceOver label. Null keeps AppKit's.
+  final String? semanticsLabel;
+
+  /// Shown when the pointer rests on the indicator (`toolTip`).
+  final String? tooltip;
 
   /// Shown when native views are not supported. Defaults to a
   /// [LinearProgressIndicator] or a [CupertinoActivityIndicator].
@@ -42,6 +50,8 @@ class NativeProgressIndicator extends StatelessWidget {
     final spinner = const [10.0, 16.0, 32.0, 32.0, 32.0][controlSize.index];
     return NativeView(
       viewType: 'progress',
+      semanticsLabel: semanticsLabel,
+      tooltip: tooltip,
       expand: bar,
       estimatedSize: bar ? const Size(160, 6) : Size(spinner, spinner),
       params: {

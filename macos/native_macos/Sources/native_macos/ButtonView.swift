@@ -1,9 +1,10 @@
 import Cocoa
 
-/// A push, glass, or borderless `NSButton`.
+/// A push, glass, or borderless `NSButton`, or a help or disclosure button.
 final class ButtonView: NSView, NativeControl {
   var emit: ((String, Any?) -> Void)?
   private let button = NSButton(title: "", target: nil, action: nil)
+  private var kind = "push"
   /// Room around the button for bezels that draw past their frame, such as
   /// the glass bezel's edge highlight.
   private var inset: CGFloat = 0
@@ -19,22 +20,60 @@ final class ButtonView: NSView, NativeControl {
 
   required init?(coder: NSCoder) { nil }
 
-  @objc private func pressed() { emit?("pressed", nil) }
+  @objc private func pressed() {
+    if kind == "disclosure" {
+      emit?("changed", ["value": button.state == .on])
+    } else {
+      emit?("pressed", nil)
+    }
+  }
 
   func apply(_ p: [String: Any]) {
+    kind = p["kind"] as? String ?? "push"
+    button.isEnabled = p["enabled"] as? Bool ?? true
+    button.controlSize = decodeControlSize(p["controlSize"])
+    // Return and Escape reach the button when the Flutter view does not
+    // handle them, as for the default and cancel buttons of a dialog.
+    button.keyEquivalent = p["isDefault"] as? Bool == true ? "\r" : (p["isCancel"] as? Bool == true ? "\u{1b}" : "")
+    inset = 0
+    switch kind {
+    case "help", "disclosure":
+      button.title = ""
+      button.image = nil
+      button.imagePosition = .noImage
+      button.isBordered = true
+      button.bezelColor = nil
+      button.contentTintColor = nil
+      if kind == "help" {
+        button.setButtonType(.momentaryPushIn)
+        button.bezelStyle = .helpButton
+      } else {
+        button.setButtonType(.pushOnPushOff)
+        button.bezelStyle = .disclosure
+        button.state = p["value"] as? Bool == true ? .on : .off
+      }
+      needsLayout = true
+      return
+    default:
+      button.setButtonType(.momentaryPushIn)
+    }
+
     let label = p["label"] as? String ?? ""
     button.title = label
     button.image = decodeImage(p["symbol"], label: label)
     button.imagePosition = button.image == nil ? .noImage : (label.isEmpty ? .imageOnly : .imageLeading)
-    button.isEnabled = p["enabled"] as? Bool ?? true
-    button.controlSize = decodeControlSize(p["controlSize"])
     button.hasDestructiveAction = p["destructive"] as? Bool ?? false
 
     let style = p["style"] as? String
     button.isBordered = style != "borderless"
-    inset = 0
     button.bezelStyle = .push
     if style == "automatic", #available(macOS 14.0, *) { button.bezelStyle = .automatic }
+    // Before border shapes, an icon-only circle is the circular bezel.
+    var circular = p["borderShape"] as? String == "circle" && label.isEmpty && button.image != nil
+    #if compiler(>=6.2)
+      if #available(macOS 26.0, *) { circular = false }
+    #endif
+    if circular, style != "borderless" { button.bezelStyle = .circular }
     #if compiler(>=6.2)
       if #available(macOS 26.0, *) {
         if style == "glass" {

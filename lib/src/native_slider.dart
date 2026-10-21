@@ -20,6 +20,9 @@ class NativeSlider extends StatefulWidget {
     this.neutralValue,
     this.prominence = NativeTintProminence.automatic,
     this.controlSize = NativeControlSize.regular,
+    this.semanticsLabel,
+    this.tooltip,
+    this.focusable = false,
     this.fallback,
   }) : assert(min < max),
        assert(tickMarks >= 0);
@@ -49,6 +52,17 @@ class NativeSlider extends StatefulWidget {
   final NativeTintProminence prominence;
 
   final NativeControlSize controlSize;
+
+  /// The VoiceOver label. Null keeps AppKit's, which reads the control's
+  /// title.
+  final String? semanticsLabel;
+
+  /// Shown when the pointer rests on the control (`toolTip`).
+  final String? tooltip;
+
+  /// Whether Tab and Full Keyboard Access can focus the control. While it
+  /// has focus, key presses go to AppKit instead of Flutter.
+  final bool focusable;
 
   /// Shown when native views are not supported. Defaults to a
   /// [CupertinoSlider].
@@ -80,6 +94,9 @@ class _NativeSliderState extends State<NativeSlider> {
     return NativeView(
       key: _view,
       viewType: 'slider',
+      semanticsLabel: widget.semanticsLabel,
+      tooltip: widget.tooltip,
+      focusable: widget.focusable,
       expand: true,
       enabled: widget.onChanged != null,
       estimatedSize: Size(160, widget.tickMarks > 0 ? height + 6 : height),

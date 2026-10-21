@@ -311,6 +311,98 @@ void main() {
     expect((calls.last.arguments as Map)['session'], isA<String>());
   }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
 
+  testWidgets('sends the display mode, tooltips, and direction', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Directionality(
+          textDirection: TextDirection.rtl,
+          child: NativeToolbar(
+            style: NativeToolbarStyle.expanded,
+            displayMode: NativeToolbarDisplayMode.iconAndLabel,
+            items: [
+              NativeToolbarSegments(
+                id: 'view',
+                labels: const ['A', 'B'],
+                tooltips: const ['First', 'Second'],
+                selectedIndex: 0,
+                onChanged: (_) {},
+              ),
+            ],
+            child: const SizedBox(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final spec = calls.last.arguments as Map;
+    expect(spec['displayMode'], 'iconAndLabel');
+    expect(spec['rtl'], true);
+    expect(items(calls.last).single['tooltips'], ['First', 'Second']);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+  testWidgets('a search controller sets the field and follows typing', (
+    tester,
+  ) async {
+    final controller = NativeToolbarSearchController(text: 'draft');
+    addTearDown(controller.dispose);
+    final changes = <String>[];
+    var notified = 0;
+    controller.addListener(() => notified++);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: NativeToolbar(
+          items: [
+            NativeToolbarSearch(
+              id: 'search',
+              controller: controller,
+              onChanged: changes.add,
+            ),
+          ],
+          child: const SizedBox(),
+        ),
+      ),
+    );
+    await tester.pump();
+    // The field starts empty, so the controller's text follows the set.
+    expect(calls.map((c) => c.method), ['set', 'searchText']);
+    expect(calls.last.arguments, {'id': 'search', 'text': 'draft'});
+
+    controller.text = 'inbox';
+    await tester.pump();
+    expect(calls.last.arguments, {'id': 'search', 'text': 'inbox'});
+    expect(changes, isEmpty);
+
+    calls.clear();
+    await event(tester, {'id': 'search', 'type': 'changed', 'value': 'in'});
+    expect(controller.text, 'in');
+    expect(changes, ['in']);
+    // Typing is not echoed back to the field.
+    expect(calls.where((c) => c.method == 'searchText'), isEmpty);
+
+    controller.clear();
+    await tester.pump();
+    expect(calls.last.arguments, {'id': 'search', 'text': ''});
+    expect(notified, 3);
+
+    // Other updates leave an existing field's text alone.
+    controller.text = 'kept';
+    await tester.pump();
+    calls.clear();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: NativeToolbar(
+          title: 'Changed',
+          items: [NativeToolbarSearch(id: 'search', controller: controller)],
+          child: const SizedBox(),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(calls.map((c) => c.method), ['set']);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
   testWidgets('shows only the child elsewhere', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(

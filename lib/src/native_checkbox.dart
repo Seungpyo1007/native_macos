@@ -15,6 +15,9 @@ class NativeCheckbox extends StatefulWidget {
     required this.onChanged,
     this.label,
     this.controlSize = NativeControlSize.regular,
+    this.semanticsLabel,
+    this.tooltip,
+    this.focusable = false,
     this.fallback,
   });
 
@@ -26,6 +29,17 @@ class NativeCheckbox extends StatefulWidget {
   final String? label;
 
   final NativeControlSize controlSize;
+
+  /// The VoiceOver label. Null keeps AppKit's, which reads the control's
+  /// title.
+  final String? semanticsLabel;
+
+  /// Shown when the pointer rests on the control (`toolTip`).
+  final String? tooltip;
+
+  /// Whether Tab and Full Keyboard Access can focus the control. While it
+  /// has focus, key presses go to AppKit instead of Flutter.
+  final bool focusable;
 
   /// Shown when native views are not supported. Defaults to a
   /// [CupertinoCheckbox] followed by [label].
@@ -58,6 +72,9 @@ class _NativeCheckboxState extends State<NativeCheckbox> {
     return NativeView(
       key: _view,
       viewType: 'checkbox',
+      semanticsLabel: widget.semanticsLabel,
+      tooltip: widget.tooltip,
+      focusable: widget.focusable,
       enabled: widget.onChanged != null,
       estimatedSize: Size(
         label.isEmpty ? 18 : estimatedTextWidth(label, padding: 22),
