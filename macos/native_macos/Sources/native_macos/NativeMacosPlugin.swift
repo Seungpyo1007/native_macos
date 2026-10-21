@@ -52,8 +52,17 @@ public class NativeMacosPlugin: NSObject, FlutterPlugin {
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     let args = call.arguments as? [String: Any] ?? [:]
     switch call.method {
+    case "capabilities":
+      // A new session means a hot restart: the previous run's toolbar has
+      // no Dart side left to answer its events.
+      if let session = args["session"] as? String, let toolbar, toolbar.isStale(for: session) {
+        toolbar.clear(window: registrar?.view?.window)
+      }
+      result(Self.capabilities())
     case "showAlert":
-      guard let window = registrar?.view?.window else { return result(noWindow()) }
+      let window = registrar?.view?.window
+      // An app-modal alert needs no window; only a sheet does.
+      if args["asSheet"] as? Bool ?? true, window == nil { return result(noWindow()) }
       AlertPresenter.show(args, window: window, result: result)
     case "showMenu":
       guard let view = registrar?.view, view.window != nil else { return result(noWindow()) }
@@ -61,6 +70,16 @@ public class NativeMacosPlugin: NSObject, FlutterPlugin {
     default:
       result(FlutterMethodNotImplemented)
     }
+  }
+
+  /// What this build can draw. Glass needs the macOS 26 SDK at build time
+  /// and macOS 26 at run time.
+  static func capabilities() -> [String: Any] {
+    var glass = false
+    #if compiler(>=6.2)
+      if #available(macOS 26.0, *) { glass = true }
+    #endif
+    return ["liquidGlass": glass]
   }
 
   private func noWindow() -> FlutterError {

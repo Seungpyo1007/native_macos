@@ -51,6 +51,8 @@ final class HostView: NSView {
   private let channel: FlutterMethodChannel
   private var lastSize = NSSize.zero
   private var interactive = true
+  /// Set while a snapshot is applied, so changes it causes report once.
+  private var updating = false
 
   init(control: NativeControl, channel: FlutterMethodChannel) {
     self.control = control
@@ -85,16 +87,33 @@ final class HostView: NSView {
   }
 
   func update(_ p: [String: Any]) {
+    updating = true
+    defer {
+      updating = false
+      reportSize()
+    }
     appearance = NSAppearance(named: p["brightness"] as? String == "dark" ? .darkAqua : .aqua)
     // AppKit does not pass the direction down the view tree.
     setLayoutDirection((p["rtl"] as? Bool ?? false) ? .rightToLeft : .leftToRight, on: self)
     interactive = p["interactive"] as? Bool ?? true
     control.apply(p)
+  }
+
+  // The fitting size can change without an update from Dart: a new system
+  // appearance or text setting, or the first layout in a window.
+  override func viewDidChangeEffectiveAppearance() {
+    super.viewDidChangeEffectiveAppearance()
+    reportSize()
+  }
+
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
     reportSize()
   }
 
   /// Sends the fitting size to Dart when it changes.
   func reportSize() {
+    guard !updating else { return }
     let size = control.fittingSizeForFlutter()
     // Sliders and bars have no fitting width; Dart sizes them to the parent.
     guard size.height > 0, size != lastSize else { return }

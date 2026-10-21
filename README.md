@@ -113,10 +113,17 @@ NativeToolbar(
 ```
 
 Each item needs an `id` that is unique within the toolbar. A window has one
-toolbar: the newest `NativeToolbar` owns it, and the one below takes over
-when it is removed, as when a route is popped. While a toolbar is shown, the
-window follows your app's theme brightness. The search field keeps its own
-text and reports edits through `onChanged` and `onSubmitted`.
+toolbar, and it follows what is on screen: the newest *visible*
+`NativeToolbar` owns it. A toolbar in a hidden `IndexedStack` tab or in a
+route covered by an opaque route does not count, so switching tabs or
+pushing a page without a toolbar changes or removes the window's toolbar,
+and popping brings it back. While a dialog or another route covers the
+toolbar's route, or a `NativeInputBlocker` above it blocks input, its items
+are disabled. While a toolbar is shown, the window follows your app's theme
+brightness, and when the last one goes away the window gets back its own
+title, title visibility, and toolbar style. The search field keeps its own
+text, also when items before it change, and reports edits through
+`onChanged` and `onSubmitted`.
 
 ### Glass styles
 
@@ -214,8 +221,15 @@ NativeSwitch(
   fallback: Switch(value: on, onChanged: toggle),
 )
 
-if (NativeMacos.hasLiquidGlass) { /* macOS 26 or later */ }
+await NativeMacos.loadCapabilities(); // optional, see below
+if (NativeMacos.hasLiquidGlass) { /* glass is drawn */ }
 ```
+
+`hasLiquidGlass` is true when native views actually draw Liquid Glass, which
+needs macOS 26 and an app built with Xcode 26 or later. The first native
+widget asks the native side, which knows both; until that answer arrives
+only the macOS version is checked. Await `NativeMacos.loadCapabilities()`
+before the first frame if you branch on it there.
 
 ## Example
 

@@ -4,7 +4,12 @@ import FlutterMacOS
 /// Builds the window's `NSToolbar` from Dart's item list and reports item
 /// events back to Dart.
 final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegate {
-  static let toolbarIdentifier = NSToolbar.Identifier("native_macos.toolbar")
+  /// A new identifier for each toolbar. AppKit keeps toolbars that share an
+  /// identifier in sync, so a fixed one would mirror item changes into other
+  /// windows' toolbars, and out of range when they have fewer items.
+  static func makeToolbarIdentifier() -> NSToolbar.Identifier {
+    NSToolbar.Identifier("native_macos.toolbar.\(UUID().uuidString)")
+  }
 
   /// Sends `event` calls to Dart. Replaced in tests.
   var emit: (String, String, Any?) -> Void
@@ -16,6 +21,21 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
   /// instead of updating items in place.
   private var shape: [String] = []
   private var searchIds: [ObjectIdentifier: String] = [:]
+  /// Search items by Dart id, reused when the toolbar is rebuilt so the
+  /// field keeps its text.
+  private var searchItems: [String: NSSearchToolbarItem] = [:]
+  /// The Dart session that set the toolbar.
+  private(set) var session: String?
+  /// The window's own settings from before the toolbar, put back by clear.
+  private var saved: SavedWindow?
+
+  private struct SavedWindow {
+    let toolbar: NSToolbar?
+    let appearance: NSAppearance?
+    let title: String
+    let titleVisibility: NSWindow.TitleVisibility
+    let toolbarStyle: NSWindow.ToolbarStyle
+  }
 
   init(emit: @escaping (String, String, Any?) -> Void) {
     self.emit = emit
@@ -27,29 +47,47 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
     }
   }
 
+  /// Whether the toolbar was set by a Dart session other than [session].
+  func isStale(for session: String) -> Bool {
+    toolbar != nil && self.session != nil && self.session != session
+  }
+
   func set(_ p: [String: Any], window: NSWindow) {
     let next = p["items"] as? [[String: Any]] ?? []
     let nextShape = next.map(Self.shape(of:))
+    session = p["session"] as? String
 
     if let toolbar, self.window === window, window.toolbar === toolbar {
       specs = next
       if nextShape != shape {
+        // Keep the items before the first difference, so a search field
+        // there keeps its text and focus, and rebuild the rest.
+        let kept = zip(shape, nextShape).prefix { $0 == $1 }.count
         shape = nextShape
-        while !toolbar.items.isEmpty { toolbar.removeItem(at: 0) }
-        searchIds = [:]
-        for (index, spec) in next.enumerated() {
-          toolbar.insertItem(withItemIdentifier: identifier(for: spec, at: index), at: index)
+        while toolbar.items.count > kept { toolbar.removeItem(at: toolbar.items.count - 1) }
+        let liveIds = Set(next.compactMap { $0["kind"] as? String == "search" ? $0["id"] as? String : nil })
+        searchItems = searchItems.filter { liveIds.contains($0.key) }
+        searchIds = Dictionary(uniqueKeysWithValues: searchItems.map { (ObjectIdentifier($1.searchField), $0) })
+        for (item, spec) in zip(toolbar.items, next) { configure(item, with: spec) }
+        for index in kept..<next.count {
+          toolbar.insertItem(withItemIdentifier: identifier(for: next[index], at: index), at: index)
         }
       } else {
         for (item, spec) in zip(toolbar.items, next) { configure(item, with: spec) }
       }
     } else {
+      if self.window !== window || saved == nil {
+        saved = SavedWindow(
+          toolbar: window.toolbar, appearance: window.appearance, title: window.title,
+          titleVisibility: window.titleVisibility, toolbarStyle: window.toolbarStyle)
+      }
       // A new toolbar fills itself from toolbarDefaultItemIdentifiers, so
       // the specs must be in place before it is attached.
       specs = next
       shape = nextShape
       searchIds = [:]
-      let toolbar = NSToolbar(identifier: Self.toolbarIdentifier)
+      searchItems = [:]
+      let toolbar = NSToolbar(identifier: Self.makeToolbarIdentifier())
       toolbar.delegate = self
       toolbar.displayMode = .iconOnly
       toolbar.allowsUserCustomization = false
@@ -69,15 +107,27 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
     }
   }
 
+  /// Removes the toolbar and puts back the window's own settings.
   func clear(window: NSWindow?) {
     if let window, window.toolbar === toolbar {
-      window.toolbar = nil
-      window.appearance = nil
+      if let saved, self.window === window {
+        window.toolbar = saved.toolbar
+        window.appearance = saved.appearance
+        window.title = saved.title
+        window.titleVisibility = saved.titleVisibility
+        window.toolbarStyle = saved.toolbarStyle
+      } else {
+        window.toolbar = nil
+        window.appearance = nil
+      }
     }
     toolbar = nil
+    saved = nil
+    session = nil
     specs = []
     shape = []
     searchIds = [:]
+    searchItems = [:]
   }
 
   private static func shape(of spec: [String: Any]) -> String {
@@ -140,13 +190,19 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
     case "menu":
       item = NSMenuToolbarItem(itemIdentifier: itemIdentifier)
     case "search":
-      let search = NSSearchToolbarItem(itemIdentifier: itemIdentifier)
-      search.searchField.delegate = self
-      search.searchField.sendsWholeSearchString = true
-      search.searchField.target = self
-      search.searchField.action = #selector(searchSubmitted(_:))
-      searchIds[ObjectIdentifier(search.searchField)] = spec["id"] as? String
-      item = search
+      let id = spec["id"] as? String ?? ""
+      if let existing = searchItems[id], existing.itemIdentifier == itemIdentifier {
+        item = existing
+      } else {
+        let search = NSSearchToolbarItem(itemIdentifier: itemIdentifier)
+        search.searchField.delegate = self
+        search.searchField.sendsWholeSearchString = true
+        search.searchField.target = self
+        search.searchField.action = #selector(searchSubmitted(_:))
+        searchIds[ObjectIdentifier(search.searchField)] = id
+        searchItems[id] = search
+        item = search
+      }
     default:
       item = NSToolbarItem(itemIdentifier: itemIdentifier)
       item.target = self

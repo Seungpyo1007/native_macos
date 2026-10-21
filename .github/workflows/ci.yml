@@ -70,3 +70,7 @@ jobs:
       # Swift unit tests for every control, without a Flutter engine.
       - working-directory: example/macos
         run: xcodebuild test -workspace Runner.xcworkspace -scheme Runner -destination 'platform=macOS'
+      # Real engine and AppKit: native sizes and the capability check. Last,
+      # because it points the generated Xcode config at its own entry point.
+      - working-directory: example
+        run: flutter test integration_test -d macos

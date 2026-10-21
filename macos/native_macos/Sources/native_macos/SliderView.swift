@@ -18,8 +18,11 @@ final class SliderView: NSView, NativeControl {
 
   required init?(coder: NSCoder) { nil }
 
-  @objc private func changed() {
-    let ended = NSApp.currentEvent?.type == .leftMouseUp
+  @objc func changed() {
+    // Only a mouse drag continues: a mouse up, a key press, VoiceOver, or an
+    // action without an event all end the change, so tracking never sticks.
+    let type = NSApp?.currentEvent?.type
+    let ended = type != .leftMouseDown && type != .leftMouseDragged
     tracking = !ended
     emit?("changed", ["value": slider.doubleValue])
     if ended { emit?("changeEnded", ["value": slider.doubleValue]) }

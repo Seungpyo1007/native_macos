@@ -1,7 +1,9 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
 import 'package:native_macos/native_macos.dart';
+import 'package:native_macos/src/native_channel.dart';
 
 import 'support/fake_platform_views.dart';
 
@@ -96,6 +98,114 @@ void main() {
       },
       variant: TargetPlatformVariant.only(TargetPlatform.macOS),
     );
+
+    testWidgets('NativeCheckbox puts the value back when ignored', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _app(NativeCheckbox(value: true, label: 'A', onChanged: (_) {})),
+      );
+      await tester.pump();
+      await views.emit(tester, 'native_macos/checkbox', 'changed', {
+        'value': false,
+      });
+      await tester.pump();
+      expect(views.updates['native_macos/checkbox']!.last['value'], true);
+    }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+    testWidgets('NativePopUpButton puts the selection back when ignored', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _app(
+          NativePopUpButton<String>(
+            value: 'b',
+            onChanged: (_) {},
+            items: const [
+              NativeMenuItem(title: 'A', value: 'a'),
+              NativeMenuItem(title: 'B', value: 'b'),
+            ],
+          ),
+        ),
+      );
+      await tester.pump();
+      await views.emit(tester, 'native_macos/popup', 'changed', {'value': 0});
+      await tester.pump();
+      expect(views.updates['native_macos/popup']!.last['selectedIndex'], 1);
+    }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+    testWidgets('NativeSlider resyncs only when the drag ends', (tester) async {
+      await tester.pumpWidget(
+        _app(NativeSlider(value: 0.2, onChanged: (_) {})),
+      );
+      await tester.pump();
+      await views.emit(tester, 'native_macos/slider', 'changed', {
+        'value': 0.5,
+      });
+      await tester.pump();
+      // Mid-drag, sending the old value would fight the knob.
+      expect(views.updates['native_macos/slider'], isNull);
+      await views.emit(tester, 'native_macos/slider', 'changeEnded', {
+        'value': 0.5,
+      });
+      await tester.pump();
+      expect(views.updates['native_macos/slider']!.last['value'], 0.2);
+    }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+    testWidgets('view channels are unique and carry the Dart session', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _app(
+          Column(
+            children: [
+              NativeButton(label: 'A', onPressed: () {}),
+              NativeButton(label: 'B', onPressed: () {}),
+            ],
+          ),
+        ),
+      );
+      await tester.pump();
+      final channels = [
+        for (final params in views.all('native_macos/button'))
+          params['channel'] as String,
+      ];
+      expect(channels, hasLength(2));
+      expect(channels.toSet(), hasLength(2));
+      // A hot restart starts a new session, so its names never collide with
+      // the previous run's views.
+      for (final name in channels) {
+        expect(name, startsWith('native_macos/view_${nativeSession}_'));
+      }
+    }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+    testWidgets('a removed view is disposed', (tester) async {
+      await tester.pumpWidget(_app(NativeButton(label: 'A', onPressed: () {})));
+      await tester.pump();
+      expect(views.all('native_macos/button'), hasLength(1));
+      await tester.pumpWidget(_app(const SizedBox()));
+      await tester.pump();
+      expect(views.all('native_macos/button'), isEmpty);
+    }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+    testWidgets('a failed update is reported, not thrown asynchronously', (
+      tester,
+    ) async {
+      Widget build(String label) =>
+          _app(NativeButton(label: label, onPressed: () {}));
+      await tester.pumpWidget(build('A'));
+      await tester.pump();
+      final channel = views.created['native_macos/button']!['channel'];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(MethodChannel(channel as String), (
+            call,
+          ) async {
+            throw PlatformException(code: 'broken');
+          });
+      await tester.pumpWidget(build('B'));
+      await tester.pump();
+      expect(tester.takeException(), isA<PlatformException>());
+    }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
 
     testWidgets('NativeSegmentedControl reports the index', (tester) async {
       int? selected;
