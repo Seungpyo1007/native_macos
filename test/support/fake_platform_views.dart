@@ -8,11 +8,22 @@ class FakePlatformViews {
     _messenger.setMockMethodCallHandler(SystemChannels.platform_views, _onCall);
   }
 
-  /// Creation params by view type, for views that are still alive.
-  final created = <String, Map<Object?, Object?>>{};
+  /// Live views by platform view id, in creation order.
+  final views = <int, ({String type, Map<Object?, Object?> params})>{};
 
-  /// `update` calls sent to each view channel.
+  /// `update` calls sent to each view channel, by view type.
   final updates = <String, List<Map<Object?, Object?>>>{};
+
+  /// Creation params of the newest live view of each type.
+  Map<String, Map<Object?, Object?>> get created => {
+    for (final view in views.values) view.type: view.params,
+  };
+
+  /// Creation params of every live view of [type], oldest first.
+  List<Map<Object?, Object?>> all(String type) => [
+    for (final view in views.values)
+      if (view.type == type) view.params,
+  ];
 
   TestDefaultBinaryMessenger get _messenger =>
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
@@ -26,7 +37,7 @@ class FakePlatformViews {
           ByteData.sublistView(bytes),
         ) as Map;
         final type = args['viewType'] as String;
-        created[type] = params;
+        views[args['id'] as int] = (type: type, params: params);
         final channel = params['channel'] as String;
         _messenger.setMockMethodCallHandler(MethodChannel(channel), (c) async {
           if (c.method == 'update') {
@@ -35,7 +46,17 @@ class FakePlatformViews {
           return null;
         });
       case 'dispose':
-        created.removeWhere((_, params) => params['id'] == call.arguments);
+        // The engine disposes by platform view id.
+        final id = call.arguments is Map
+            ? (call.arguments as Map)['id']
+            : call.arguments;
+        final view = views.remove(id);
+        if (view != null) {
+          _messenger.setMockMethodCallHandler(
+            MethodChannel(view.params['channel'] as String),
+            null,
+          );
+        }
     }
     return null;
   }

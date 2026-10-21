@@ -1,7 +1,9 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 
+import 'native_channel.dart';
 import 'native_input_blocker.dart';
+import 'native_support.dart';
 
 /// Hosts one AppKit view and keeps it in sync with the widget.
 ///
@@ -51,8 +53,10 @@ class NativeView extends StatefulWidget {
 class NativeViewState extends State<NativeView> {
   static int _nextChannel = 0;
 
+  // The session keeps names unique across hot restarts, which start the
+  // count again while the previous run's native views may still be alive.
   late final MethodChannel _channel = MethodChannel(
-    'native_macos/view_${_nextChannel++}',
+    'native_macos/view_${nativeSession}_${_nextChannel++}',
   );
   Map<String, Object?>? _lastSent;
   Map<String, Object?>? _creationParams;
@@ -65,6 +69,7 @@ class NativeViewState extends State<NativeView> {
     // The handler is set before the view exists, so the first size report
     // cannot arrive before anyone listens for it.
     _channel.setMethodCallHandler(_onNativeCall);
+    NativeMacos.loadCapabilities();
   }
 
   @override
@@ -106,7 +111,27 @@ class NativeViewState extends State<NativeView> {
     final next = _snapshot();
     if (_lastSent != null && deepEquals(_lastSent, next)) return;
     _lastSent = next;
-    _channel.invokeMethod<void>('update', next);
+    _update(next);
+  }
+
+  void _update(Map<String, Object?> snapshot) {
+    _channel.invokeMethod<void>('update', snapshot).catchError((
+      Object error,
+      StackTrace stack,
+    ) {
+      // A missing plugin or a native failure must not become an unhandled
+      // async error; the view keeps its previous configuration.
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stack,
+          library: 'native_macos',
+          context: ErrorDescription(
+            'while updating a native ${widget.viewType}',
+          ),
+        ),
+      );
+    });
   }
 
   /// Sends the configuration again after the next frame, even when it has not
@@ -118,8 +143,7 @@ class NativeViewState extends State<NativeView> {
   void resync() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_created) return;
-      _lastSent = _snapshot();
-      _channel.invokeMethod<void>('update', _lastSent);
+      _update(_lastSent = _snapshot());
     });
     // A post-frame callback does not ask for a frame by itself.
     WidgetsBinding.instance.scheduleFrame();

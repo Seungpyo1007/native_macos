@@ -177,6 +177,140 @@ void main() {
     expect(attempts, 3);
   }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
 
+  String? title(MethodCall call) => (call.arguments as Map)['title'] as String?;
+
+  testWidgets('the visible IndexedStack child owns the toolbar', (
+    tester,
+  ) async {
+    Widget build(int index) => MaterialApp(
+      home: IndexedStack(
+        index: index,
+        children: const [
+          NativeToolbar(title: 'first', items: [], child: SizedBox()),
+          NativeToolbar(title: 'second', items: [], child: SizedBox()),
+        ],
+      ),
+    );
+    await tester.pumpWidget(build(0));
+    await tester.pump();
+    // The second tab is mounted later but hidden, so it must not win.
+    expect(title(calls.lastWhere((c) => c.method == 'set')), 'first');
+    await tester.pumpWidget(build(1));
+    await tester.pump();
+    expect(title(calls.last), 'second');
+    await tester.pumpWidget(build(0));
+    await tester.pump();
+    expect(title(calls.last), 'first');
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+  testWidgets('a route without a toolbar removes the one below it', (
+    tester,
+  ) async {
+    final navigator = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: navigator,
+        home: const NativeToolbar(title: 'home', items: [], child: SizedBox()),
+      ),
+    );
+    await tester.pump();
+    navigator.currentState!.push(
+      MaterialPageRoute<void>(builder: (_) => const Text('detail')),
+    );
+    await tester.pumpAndSettle();
+    expect(calls.last.method, 'clear');
+
+    navigator.currentState!.pop();
+    await tester.pumpAndSettle();
+    expect(calls.last.method, 'set');
+    expect(title(calls.last), 'home');
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+  testWidgets('items are disabled and ignore events behind a dialog', (
+    tester,
+  ) async {
+    var pressed = 0;
+    final navigator = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: navigator,
+        home: NativeToolbar(
+          items: [
+            NativeToolbarButton(
+              id: 'b',
+              label: 'B',
+              onPressed: () => pressed++,
+            ),
+          ],
+          child: const SizedBox(),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(items(calls.last).single['enabled'], true);
+
+    showDialog<void>(
+      context: navigator.currentContext!,
+      builder: (_) => const Text('dialog'),
+    );
+    await tester.pumpAndSettle();
+    expect(items(calls.last).single['enabled'], false);
+    await event(tester, {'id': 'b', 'type': 'pressed'});
+    expect(pressed, 0);
+
+    navigator.currentState!.pop();
+    await tester.pumpAndSettle();
+    expect(items(calls.last).single['enabled'], true);
+    await event(tester, {'id': 'b', 'type': 'pressed'});
+    expect(pressed, 1);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+  testWidgets('a NativeInputBlocker above disables the items', (tester) async {
+    Widget build(bool blocked) => MaterialApp(
+      home: NativeInputBlocker(
+        blocked: blocked,
+        child: NativeToolbar(
+          items: [NativeToolbarButton(id: 'b', label: 'B', onPressed: () {})],
+          child: const SizedBox(),
+        ),
+      ),
+    );
+    await tester.pumpWidget(build(false));
+    await tester.pump();
+    expect(items(calls.last).single['enabled'], true);
+    await tester.pumpWidget(build(true));
+    await tester.pump();
+    expect(items(calls.last).single['enabled'], false);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+  testWidgets('a native failure is reported, not thrown asynchronously', (
+    tester,
+  ) async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(_channel, (call) async {
+          throw PlatformException(code: 'boom', message: 'failed');
+        });
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: NativeToolbar(items: [], child: SizedBox()),
+      ),
+    );
+    await tester.pump();
+    final error = tester.takeException();
+    expect(error, isA<PlatformException>());
+    expect((error as PlatformException).code, 'boom');
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+  testWidgets('updates carry the Dart session', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: NativeToolbar(items: [], child: SizedBox()),
+      ),
+    );
+    await tester.pump();
+    expect((calls.last.arguments as Map)['session'], isA<String>());
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
   testWidgets('shows only the child elsewhere', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(

@@ -1,6 +1,8 @@
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import 'native_channel.dart';
+import 'native_input_blocker.dart';
 import 'native_menu.dart';
 import 'native_support.dart';
 import 'native_view.dart';
@@ -225,9 +227,15 @@ final class NativeToolbarSpace extends NativeToolbarItem {
 ///
 /// The toolbar belongs to the window, not to the widget tree: AppKit draws
 /// it in the title bar above all Flutter content. A window has one toolbar,
-/// so the most recently built [NativeToolbar] wins, and the toolbar goes
-/// away when the widget is removed. On other platforms only [child] is
-/// shown.
+/// so among the [NativeToolbar]s that are visible, the most recently built
+/// one wins. A toolbar in a hidden [IndexedStack] child or in a route
+/// covered by an opaque route does not count, so the toolbar follows what
+/// is on screen. When no visible [NativeToolbar] is left, the window's
+/// toolbar goes away. On other platforms only [child] is shown.
+///
+/// While its route is covered by another one, such as a dialog, or while a
+/// [NativeInputBlocker] above it blocks input, the toolbar's items are
+/// disabled so they cannot act behind the overlay.
 ///
 /// While mounted, the window also follows the app's theme brightness, so
 /// the title bar matches a dark or light app.
@@ -260,26 +268,41 @@ class NativeToolbar extends StatefulWidget {
 class _NativeToolbarState extends State<NativeToolbar> {
   static const _channel = MethodChannel('native_macos/toolbar');
 
-  /// Mounted toolbars, newest last. The newest one owns the window, and the
-  /// one below takes over when it goes away, as when a route is popped.
-  static final _stack = <_NativeToolbarState>[];
+  /// Mounted toolbars, oldest first.
+  static final _mounted = <_NativeToolbarState>[];
 
-  bool get _isActive => _stack.isNotEmpty && identical(_stack.last, this);
+  /// The toolbar that owns the window: the newest visible one.
+  static _NativeToolbarState? _owner;
+
+  /// Whether this toolbar's subtree is on screen: tickers enabled (not in an
+  /// offstage route) and not hidden by an [IndexedStack] or [Visibility].
+  bool _visible = true;
+
+  /// Whether this toolbar's items take input: its route is the current one
+  /// and no [NativeInputBlocker] above it blocks.
+  bool _interactive = true;
 
   Map<String, Object?>? _lastSent;
   int _windowRetries = 0;
 
+  bool get _isActive => identical(_owner, this);
+
   @override
   void initState() {
     super.initState();
-    _stack.add(this);
-    _channel.setMethodCallHandler(_onEvent);
+    _mounted.add(this);
+    if (NativeMacos.isSupported) NativeMacos.loadCapabilities();
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _scheduleSend();
+    _visible = TickerMode.valuesOf(context).enabled && Visibility.of(context);
+    _interactive =
+        (ModalRoute.isCurrentOf(context) ?? true) &&
+        !NativeInputBlocker.isBlocked(context);
+    // A visibility change can move ownership to or from this toolbar.
+    if (!_reassign()) _scheduleSend();
   }
 
   @override
@@ -290,19 +313,45 @@ class _NativeToolbarState extends State<NativeToolbar> {
 
   @override
   void dispose() {
-    final wasActive = _isActive;
-    _stack.remove(this);
-    if (wasActive) {
-      if (_stack.isEmpty) {
-        _channel.setMethodCallHandler(null);
-        if (NativeMacos.isSupported) _channel.invokeMethod<void>('clear');
-      } else {
-        final next = _stack.last;
-        _channel.setMethodCallHandler(next._onEvent);
-        next._scheduleSend(force: true);
+    _mounted.remove(this);
+    _reassign();
+    super.dispose();
+  }
+
+  /// Gives the window to the newest visible toolbar, or clears it when there
+  /// is none. Returns whether the owner changed.
+  static bool _reassign() {
+    _NativeToolbarState? next;
+    for (final state in _mounted.reversed) {
+      if (state._visible) {
+        next = state;
+        break;
       }
     }
-    super.dispose();
+    if (identical(next, _owner)) return false;
+    final hadOwner = _owner != null;
+    _owner = next;
+    if (next == null) {
+      _channel.setMethodCallHandler(null);
+      if (hadOwner && NativeMacos.isSupported) {
+        _channel.invokeMethod<void>('clear').catchError(_report);
+      }
+    } else {
+      _channel.setMethodCallHandler(next._onEvent);
+      next._scheduleSend(force: true);
+    }
+    return true;
+  }
+
+  static void _report(Object error, StackTrace stack) {
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stack,
+        library: 'native_macos',
+        context: ErrorDescription('while updating the native toolbar'),
+      ),
+    );
   }
 
   Map<String, Object?> _spec() {
@@ -320,11 +369,20 @@ class _NativeToolbarState extends State<NativeToolbar> {
       return ids.length == ids.toSet().length;
     }(), 'NativeToolbar item ids must be unique.');
     return {
+      'session': nativeSession,
       'title': widget.title,
       'showsTitle': widget.showsTitle,
       'style': widget.style.name,
       'brightness': nativeBrightness(context).name,
-      'items': [for (final item in widget.items) item._encode()],
+      'items': [
+        for (final item in widget.items)
+          {
+            ...item._encode(),
+            // Items behind a dialog or blocker must not act; disabled is
+            // also how AppKit shows a toolbar behind a sheet.
+            if (!_interactive) 'enabled': false,
+          },
+      ],
     };
   }
 
@@ -343,11 +401,16 @@ class _NativeToolbarState extends State<NativeToolbar> {
     try {
       await _channel.invokeMethod<void>('set', spec);
       _windowRetries = 0;
-    } on PlatformException catch (e) {
+    } on PlatformException catch (e, stack) {
       // The window can be missing for the first frames after launch.
-      if (e.code != 'no_window' || ++_windowRetries > 60) rethrow;
-      _lastSent = null;
-      _scheduleSend();
+      if (e.code == 'no_window' && ++_windowRetries <= 60) {
+        _lastSent = null;
+        _scheduleSend();
+      } else {
+        _report(e, stack);
+      }
+    } on MissingPluginException catch (e, stack) {
+      _report(e, stack);
     }
   }
 
@@ -366,7 +429,7 @@ class _NativeToolbarState extends State<NativeToolbar> {
   }
 
   Future<Object?> _onEvent(MethodCall call) async {
-    if (call.method != 'event' || !mounted) return null;
+    if (call.method != 'event' || !mounted || !_interactive) return null;
     final args = call.arguments as Map;
     final value = args['value'];
     switch (_item(args['id'])) {

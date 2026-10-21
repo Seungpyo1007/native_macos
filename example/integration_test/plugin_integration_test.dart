@@ -35,4 +35,14 @@ void main() {
     }
     expect(NativeMacos.macOSVersion, isNotNull);
   });
+
+  testWidgets('the native side answers whether this build draws glass', (
+    tester,
+  ) async {
+    await NativeMacos.loadCapabilities();
+    // macOS 26 and an Xcode 26 build draw glass; anything older does not.
+    if ((NativeMacos.macOSVersion ?? 0) < 26) {
+      expect(NativeMacos.hasLiquidGlass, false);
+    }
+  });
 }

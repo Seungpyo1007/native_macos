@@ -220,4 +220,111 @@ final class RunnerTests: XCTestCase {
     XCTAssertNil(window.toolbar)
     XCTAssertNil(window.appearance)
   }
+
+  func testToolbarKeepsSearchTextWhenItemsBeforeItChange() {
+    let (controller, window, _) = makeToolbar()
+    controller.set(toolbarSpec, window: window)
+    let search = window.toolbar!.items[4] as! NSSearchToolbarItem
+    search.searchField.stringValue = "draft"
+    var spec = toolbarSpec
+    var items = spec["items"] as! [[String: Any]]
+    items.removeFirst()
+    spec["items"] = items
+    controller.set(spec, window: window)
+    let rebuilt = window.toolbar!.items.last as! NSSearchToolbarItem
+    XCTAssertTrue(rebuilt === search)
+    XCTAssertEqual(rebuilt.searchField.stringValue, "draft")
+  }
+
+  func testToolbarClearRestoresTheWindow() {
+    let (controller, window, _) = makeToolbar()
+    window.title = "Original"
+    window.toolbarStyle = .expanded
+    window.titleVisibility = .visible
+    var spec = toolbarSpec
+    spec["showsTitle"] = false
+    controller.set(spec, window: window)
+    XCTAssertEqual(window.title, "Mail")
+    XCTAssertEqual(window.titleVisibility, .hidden)
+    controller.clear(window: window)
+    XCTAssertEqual(window.title, "Original")
+    XCTAssertEqual(window.toolbarStyle, .expanded)
+    XCTAssertEqual(window.titleVisibility, .visible)
+  }
+
+  func testToolbarsDoNotShareAnIdentifier() {
+    // AppKit syncs toolbars with the same identifier across windows.
+    let (first, firstWindow, _) = makeToolbar()
+    let (second, secondWindow, _) = makeToolbar()
+    first.set(toolbarSpec, window: firstWindow)
+    second.set(toolbarSpec, window: secondWindow)
+    XCTAssertNotEqual(first.toolbar!.identifier, second.toolbar!.identifier)
+  }
+
+  func testToolbarFromAnotherSessionIsStale() {
+    let (controller, window, _) = makeToolbar()
+    var spec = toolbarSpec
+    spec["session"] = "run1"
+    controller.set(spec, window: window)
+    XCTAssertFalse(controller.isStale(for: "run1"))
+    XCTAssertTrue(controller.isStale(for: "run2"))
+    controller.clear(window: window)
+    XCTAssertFalse(controller.isStale(for: "run2"))
+  }
+
+  // MARK: Hosting
+
+  func testSliderTrackingEndsWithoutAMouseUp() {
+    let view = SliderView()
+    let events = record(view)
+    view.apply(["value": 0.2, "min": 0.0, "max": 1.0, "enabled": true])
+    let slider = inner(view, NSSlider.self)
+    // A keyboard or VoiceOver change has no mouse event.
+    slider.doubleValue = 0.7
+    view.changed()
+    XCTAssertEqual(events().map(\.0), ["changed", "changeEnded"])
+    view.apply(["value": 0.3, "min": 0.0, "max": 1.0, "enabled": true])
+    XCTAssertEqual(slider.doubleValue, 0.3, accuracy: 0.0001)
+  }
+
+  func testHostViewReportsItsSizeOnlyWhenItChanges() {
+    let messenger = FakeMessenger()
+    let host = HostView(control: ButtonView(), channel: FlutterMethodChannel(name: "t", binaryMessenger: messenger))
+    host.update(["label": "Save", "enabled": true])
+    host.update(["label": "Save", "enabled": true])
+    XCTAssertEqual(messenger.calls.map(\.method), ["size"])
+    host.update(["label": "Save a much longer title", "enabled": true])
+    XCTAssertEqual(messenger.calls.map(\.method), ["size", "size"])
+    let args = messenger.calls[1].arguments as! [String: Any]
+    XCTAssertGreaterThan(args["width"] as! Double, 0)
+  }
+
+  func testCapabilitiesMatchTheBuild() {
+    var expected = false
+    #if compiler(>=6.2)
+      if #available(macOS 26.0, *) { expected = true }
+    #endif
+    XCTAssertEqual(NativeMacosPlugin.capabilities()["liquidGlass"] as? Bool, expected)
+  }
+}
+
+/// Records method calls a view sends to Dart.
+private final class FakeMessenger: NSObject, FlutterBinaryMessenger {
+  var calls: [FlutterMethodCall] = []
+
+  func send(onChannel channel: String, message: Data?) {
+    send(onChannel: channel, message: message, binaryReply: nil)
+  }
+
+  func send(onChannel channel: String, message: Data?, binaryReply callback: FlutterBinaryReply? = nil) {
+    if let message {
+      calls.append(FlutterStandardMethodCodec.sharedInstance().decodeMethodCall(message))
+    }
+  }
+
+  func setMessageHandlerOnChannel(
+    _ channel: String, binaryMessageHandler handler: FlutterBinaryMessageHandler? = nil
+  ) -> FlutterBinaryMessengerConnection { 0 }
+
+  func cleanUpConnection(_ connection: FlutterBinaryMessengerConnection) {}
 }
